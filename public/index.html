@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Caixa de Atendimento - WhatsApp</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <!-- Login Modal -->
+      <dialog id="authModal" class="modal" open>
+        <div class="modal-content">
+          <h3>🔒 Acesso restrito</h3>
+          <form id="authForm">
+            <div class="form-group">
+              <label for="authPassword">Senha</label>
+              <input type="password" id="authPassword" placeholder="Digite a senha" required />
+            </div>
+            <div style="display:flex; gap:8px; margin-top: 16px;">
+              <button type="submit" class="primary">Entrar</button>
+            </div>
+          </form>
+          <p id="authError" class="error-text" style="display:none; margin-top: 12px;">Senha inválida</p>
+        </div>
+      </dialog>
+      <!-- Navegação -->
+      <nav class="navbar">
+        <div class="nav-buttons">
+          <button class="nav-btn active" data-section="chat">💬 Conversas</button>
+          <button class="nav-btn" data-section="bulk">📨 Envio em Massa</button>
+        </div>
+        <div class="navbar-right">
+        </div>
+      </nav>
+
+      <!-- Seção: Chat/Conversas -->
+      <section id="chat-section" class="section active">
+        <aside class="sidebar">
+          <div class="sidebar-header">
+            <h1>Atendimento</h1>
+            <div style="display:flex; gap:8px;">
+              <button id="newChatBtn" class="primary">+ Nova conversa</button>
+              <button id="refreshConversationsBtn" class="secondary" title="Atualizar conversas">🔄</button>
+            </div>
+          </div>
+          <div class="search">
+            <input type="text" id="searchInput" placeholder="Buscar contato..." />
+          </div>
+          <div id="conversationList" class="conversation-list"></div>
+        </aside>
+
+        <!-- Modal Nova Conversa -->
+        <dialog id="newChatModal" class="modal">
+          <div class="modal-content">
+            <h3>📱 Iniciar Nova Conversa</h3>
+            <form id="newChatForm">
+              <div class="form-group">
+                <label for="newPhoneInput">Número WhatsApp *</label>
+                <input type="text" id="newPhoneInput" placeholder="55 11 99999-9999" required />
+                <small>Formato: DDI + DDD + Número (ex: 5511987654321)</small>
+              </div>
+              <div class="form-group">
+                <label for="newNameInput">Nome do Contato</label>
+                <input type="text" id="newNameInput" placeholder="Opcional" />
+              </div>
+              <div style="display: flex; gap: 8px; margin-top: 16px;">
+                <button type="submit" class="primary">Iniciar Conversa</button>
+                <button type="button" class="secondary" id="closeModalBtn">Cancelar</button>
+              </div>
+            </form>
+          </div>
+        </dialog>
+
+        <main class="chat">
+          <div id="chatHeader" class="chat-header">
+            <div class="chat-title">
+              <h2>Selecione uma conversa</h2>
+              <span class="subtitle">Acompanhe e responda mensagens</span>
+            </div>
+          </div>
+
+          <div id="messages" class="messages"></div>
+
+          <form id="messageForm" class="composer">
+            <input id="messageInput" type="text" placeholder="Digite sua mensagem..." disabled />
+            <button type="submit" class="primary" disabled>Enviar</button>
+          </form>
+        </main>
+
+        <!-- Painel de Logs -->
+        <aside class="logs-panel">
+          <div class="logs-header">
+            <h3>📋 Logs de Envio</h3>
+            <button id="clearLogsBtn" class="logs-btn" title="Limpar logs">✕</button>
+          </div>
+          <div id="logsList" class="logs-list"></div>
+        </aside>
+      </section>
+
+      <!-- Seção: Envio em Massa -->
+      <section id="bulk-section" class="section">
+        <div class="bulk-scroll">
+        <div class="bulk-container">
+          <h2>📨 Envio em Massa</h2>
+
+          <!-- Formulário -->
+          <div class="bulk-form">
+            <div class="form-group">
+              <label for="csvFile">📄 Arquivo CSV</label>
+              <input type="file" id="csvFile" accept=".csv" />
+              <small>Colunas: nome, telefone, data_optin, metodo_optin</small>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="templateSelect">📋 Template</label>
+                <select id="templateSelect">
+                  <option value="">-- Selecione --</option>
+                  <option value="hello_world">hello_world</option>
+                  <option value="filiacao">filiacao</option>
+                  <option value="custom">Outro (especifique)</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="customTemplate">Outro Template</label>
+                <input type="text" id="customTemplate" placeholder="nome_do_template" style="display:none;" />
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="languageSelect">🌐 Idioma</label>
+                <select id="languageSelect">
+                  <option value="pt_BR">Português (Brasil)</option>
+                  <option value="en_US">English (USA)</option>
+                  <option value="es_ES">Español</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="missionName">🎯 Contexto/Missão</label>
+                <input type="text" id="missionName" placeholder="ex: Missão XYZ" value="Missão" />
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>
+                <input type="checkbox" id="marketingMessages" />
+                Usar endpoint de marketing (marketing_messages)
+              </label>
+              <small>Requer termos de marketing aceitos e template aprovado.</small>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="productPolicy">Política de fallback</label>
+                <select id="productPolicy">
+                  <option value="">Padrão (conta)</option>
+                  <option value="CLOUD_API_FALLBACK">CLOUD_API_FALLBACK</option>
+                  <option value="STRICT">STRICT</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>
+                  <input type="checkbox" id="messageActivitySharing" />
+                  Compartilhar atividade da mensagem
+                </label>
+                <small>Controla message_activity_sharing.</small>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button id="startBulkBtn" class="btn btn-primary">🚀 Iniciar Envio</button>
+              <button id="forceSendBtn" class="btn btn-secondary" style="display:none;">⚠️ Enviar mesmo assim</button>
+              <button id="stopBulkBtn" class="btn btn-secondary" style="display:none;">🛑 Parar envio</button>
+            </div>
+          </div>
+
+          <!-- Validação e Lista de Contatos -->
+          <div class="bulk-contacts">
+            <h3>📋 Contatos (validação)</h3>
+            <div id="bulkContactsInfo" class="bulk-contacts-info">Nenhum arquivo carregado.</div>
+            <div id="bulkContactsList" class="bulk-contacts-list"></div>
+          </div>
+
+          <!-- Logs do processo -->
+          <div class="bulk-logs">
+            <h3>🧾 Logs do Envio</h3>
+            <div id="bulkLogs" class="bulk-logs-list"></div>
+          </div>
+
+          <!-- Status -->
+          <div id="bulkStatus" class="bulk-status hidden">
+            <h3>📊 Status do Envio</h3>
+            <div class="status-grid">
+              <div class="status-item">
+                <span class="label">Total</span>
+                <span id="statusTotal" class="value">0</span>
+              </div>
+              <div class="status-item">
+                <span class="label">✅ Enviados</span>
+                <span id="statusSucesso" class="value">0</span>
+              </div>
+              <div class="status-item">
+                <span class="label">❌ Erros</span>
+                <span id="statusErros" class="value">0</span>
+              </div>
+              <div class="status-item">
+                <span class="label">📈 Taxa</span>
+                <span id="statusTaxa" class="value">0%</span>
+              </div>
+            </div>
+
+            <div class="progress-bar">
+              <div id="progressFill" class="progress-fill"></div>
+            </div>
+            <p id="statusText" class="status-text">Iniciando...</p>
+          </div>
+        </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="/app.js"></script>
+    <script src="/bulk-messaging.js"></script>
+  </body>
+</html>

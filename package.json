@@ -1,0 +1,22 @@
+{
+  "name": "waclientmedidor",
+  "version": "1.0.0",
+  "description": "WhatsApp Business API Client for Node.js",
+  "scripts": {
+    "build": "tsc && cp -r public/* dist/",
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@vercel/node": "^4.0.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.36.2",
+    "axios": "^1.13.4",
+    "csv-parse": "^5.6.0",
+    "dotenv": "^17.2.3",
+    "googleapis": "171.4.0"
+  }
+}

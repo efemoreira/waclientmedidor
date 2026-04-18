@@ -6,12 +6,13 @@
 import { promises as fs } from 'fs';
 import type { Conversation } from '../inbox/ConversationManager';
 
-const CONVERSATIONS_FILE = '/tmp/conversations.json';
-const CONVERSATIONS_META_FILE = '/tmp/conversations.meta.json';
+const APP_NAMESPACE = process.env.APP_NAMESPACE || 'waclientmedidor';
+const CONVERSATIONS_FILE = `/tmp/${APP_NAMESPACE}_conversations.json`;
+const CONVERSATIONS_META_FILE = `/tmp/${APP_NAMESPACE}_conversations.meta.json`;
 const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL || '';
 const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
-const UPSTASH_KEY = 'waclient:conversations';
-const UPSTASH_META_KEY = 'waclient:meta';
+const UPSTASH_KEY = `${APP_NAMESPACE}:conversations`;
+const UPSTASH_META_KEY = `${APP_NAMESPACE}:meta`;
 
 /**
  * Check if Upstash Redis is configured

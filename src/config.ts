@@ -9,7 +9,7 @@ export const config = {
     numberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',
     accountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || '',
     webhookToken: process.env.WHATSAPP_WEBHOOK_TOKEN || '',
-    apiVersion: process.env.WHATSAPP_API_VERSION?.replace(/^v/i, '') || '24.0',
+    apiVersion: process.env.WHATSAPP_API_VERSION?.replace(/^v/i, '') || '25.0',
   },
 
   // Bulk Messaging

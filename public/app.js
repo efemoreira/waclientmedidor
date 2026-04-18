@@ -92,12 +92,13 @@ async function authFetch(url, options = {}) {
     ...(options.headers || {}),
     'x-app-password': appPassword,
   };
-  return fetch(url, { ...options, headers });
+  return fetch(url, { ...options, headers, cache: 'no-store' });
 }
 
 async function tryAuth() {
   try {
-    const res = await authFetch('/api/conversations');
+    const headers = { 'x-app-password': appPassword };
+    const res = await fetch('/api/conversations', { headers, cache: 'no-store' });
     if (res.ok) {
       isAuthed = true;
       authError.style.display = 'none';

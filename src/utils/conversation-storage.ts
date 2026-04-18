@@ -76,7 +76,6 @@ export async function salvarConversas(data: Record<string, Conversation>): Promi
       if (!res.ok) {
         throw new Error(`Upstash SET failed: ${res.status}`);
       }
-      }
     } catch (err: any) {
       console.warn('⚠️  Erro ao salvar no Upstash:', err?.message || err);
     }
@@ -145,7 +144,6 @@ export async function salvarMeta(meta: { resetAt: number }): Promise<void> {
       });
       if (!res.ok) {
         throw new Error(`Upstash SET failed: ${res.status}`);
-      }
       }
     } catch (err: any) {
       console.warn('⚠️  Erro ao salvar meta no Upstash:', err?.message || err);

@@ -57,8 +57,6 @@ export async function verificarInscrito(celular: string): Promise<{
   }
 
   try {
-    const sheets = google.sheets({ version: 'v4', auth });
-    
     const inscricoes = await listarInscricoesPorCelular(celular);
     if (inscricoes.length > 0) {
       logger.info('Inscritos', `✅ Celular ${celular} encontrado: ${inscricoes[0].nome} (${inscricoes[0].uid})`);

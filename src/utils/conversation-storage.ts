@@ -37,8 +37,9 @@ export async function lerConversas(): Promise<Record<string, Conversation> | nul
         throw new Error(`Upstash GET failed: ${res.status}`);
       }
       const data: any = await res.json();
-      if (data?.result) {
-        return JSON.parse(data.result);
+      if (data?.result != null) {
+        const raw = data.result;
+        return typeof raw === 'string' ? JSON.parse(raw) : raw;
       }
     } catch (err: any) {
       console.warn('⚠️  Erro ao ler Upstash:', err?.message || err);
@@ -69,12 +70,12 @@ export async function salvarConversas(data: Record<string, Conversation>): Promi
         method: 'POST',
         headers: {
           Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
-          'Content-Type': 'application/json',
         },
         body: json,
       });
       if (!res.ok) {
         throw new Error(`Upstash SET failed: ${res.status}`);
+      }
       }
     } catch (err: any) {
       console.warn('⚠️  Erro ao salvar no Upstash:', err?.message || err);
@@ -106,8 +107,9 @@ export async function lerMeta(): Promise<{ resetAt?: number }> {
         );
       } else {
         const data: any = await res.json();
-        if (data?.result) {
-          return JSON.parse(data.result);
+        if (data?.result != null) {
+          const raw = data.result;
+          return typeof raw === 'string' ? JSON.parse(raw) : raw;
         }
       }
     } catch (err: any) {
@@ -138,12 +140,12 @@ export async function salvarMeta(meta: { resetAt: number }): Promise<void> {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
-          'Content-Type': 'application/json',
         },
         body: json,
       });
       if (!res.ok) {
         throw new Error(`Upstash SET failed: ${res.status}`);
+      }
       }
     } catch (err: any) {
       console.warn('⚠️  Erro ao salvar meta no Upstash:', err?.message || err);

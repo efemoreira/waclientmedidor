@@ -398,8 +398,41 @@ searchInput.addEventListener('input', (e) => {
   renderConversationList();
 });
 
-// Polling desabilitado para reduzir carga; usar webhook + botão atualizar.
+// Auto-polling: atualiza lista a cada 8s e conversa ativa a cada 5s
+let pollingListInterval = null;
+let pollingConvInterval = null;
+
+function startPolling() {
+  if (pollingListInterval) clearInterval(pollingListInterval);
+  if (pollingConvInterval) clearInterval(pollingConvInterval);
+
+  pollingListInterval = setInterval(async () => {
+    if (!isAuthed) return;
+    try {
+      const res = await authFetch('/api/conversations');
+      if (!res.ok) return;
+      const data = await res.json();
+      if (!Array.isArray(data)) return;
+      state.conversations = data;
+      renderConversationList();
+    } catch (_) { /* silencioso */ }
+  }, 8000);
+
+  pollingConvInterval = setInterval(async () => {
+    if (!isAuthed || !state.selectedId) return;
+    try {
+      const res = await authFetch(`/api/conversations?id=${state.selectedId}`);
+      if (!res.ok) return;
+      const conv = await res.json();
+      renderConversation(conv);
+    } catch (_) { /* silencioso */ }
+  }, 5000);
+}
+
 tryAuth().then((ok) => {
-  if (ok) fetchConversations();
+  if (ok) {
+    fetchConversations();
+    startPolling();
+  }
 });
 

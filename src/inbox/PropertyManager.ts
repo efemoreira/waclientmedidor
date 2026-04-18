@@ -29,16 +29,18 @@ export interface ConversaNovoImovel {
  */
 export class PropertyManager {
   private client: WhatsApp;
+  private _send: (to: string, text: string) => Promise<any>;
 
-  constructor(client: WhatsApp) {
+  constructor(client: WhatsApp, sendMessageFn?: (to: string, text: string) => Promise<any>) {
     this.client = client;
+    this._send = sendMessageFn || ((to, text) => client.sendMessage(to, text));
   }
 
   /**
    * Iniciar processo de adicionar novo imóvel
    */
   async iniciarAdicaoImovel(celular: string, nome: string): Promise<ConversaNovoImovel> {
-    await this.client.sendMessage(
+    await this._send(
       celular,
       `🏠 *Adicionar Novo Imóvel*
 
@@ -68,7 +70,7 @@ Por favor, me diga o *bairro* deste imóvel.`
     switch (stage) {
       case 'bairro':
         data.bairro = resposta;
-        await this.client.sendMessage(
+        await this._send(
           data.celular!,
           `✅ Bairro: ${resposta}
 
@@ -84,7 +86,7 @@ Agora me diga o *CEP* do imóvel.`
 
       case 'cep':
         data.cep = resposta;
-        await this.client.sendMessage(
+        await this._send(
           data.celular!,
           `✅ CEP: ${resposta}
 
@@ -101,7 +103,7 @@ Qual é o *tipo de imóvel*?
 
       case 'tipo_imovel':
         data.tipoImovel = resposta;
-        await this.client.sendMessage(
+        await this._send(
           data.celular!,
           `✅ Tipo: ${resposta}
 
@@ -131,7 +133,7 @@ Quantas *pessoas moram* neste imóvel?`
           });
 
           if (resultado.ok) {
-            await this.client.sendMessage(
+            await this._send(
               data.celular!,
               `🎉 *Imóvel cadastrado com sucesso!*
 
@@ -150,7 +152,7 @@ Exemplo: ${resultado.idImovel} agua 123`
 
             return { concluido: true };
           } else {
-            await this.client.sendMessage(
+            await this._send(
               data.celular!,
               `❌ Erro ao cadastrar imóvel.
 
@@ -162,7 +164,7 @@ Digite *adicionar casa* para tentar novamente.`
           }
         } catch (erro: any) {
           logger.error('PropertyManager', `Erro ao adicionar imóvel: ${erro?.message || erro}`);
-          await this.client.sendMessage(
+          await this._send(
             data.celular!,
             `❌ Ocorreu um erro ao cadastrar o imóvel.
 

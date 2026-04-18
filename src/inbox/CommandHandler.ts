@@ -16,6 +16,7 @@ export interface CommandContext {
   inscricoes: InscritoDados[];
   gastosManager: GastosManager;
   client: WhatsApp;
+  sendMessage: (to: string, text: string) => Promise<any>;
 }
 
 export interface CommandResult {
@@ -39,9 +40,11 @@ export interface Command {
 export class CommandHandler {
   private commands: Map<string, Command> = new Map();
   private client: WhatsApp;
+  private _send: (to: string, text: string) => Promise<any>;
 
-  constructor(client: WhatsApp) {
+  constructor(client: WhatsApp, sendMessageFn?: (to: string, text: string) => Promise<any>) {
     this.client = client;
+    this._send = sendMessageFn || ((to, text) => client.sendMessage(to, text));
     this.registerDefaultCommands();
   }
 
@@ -56,7 +59,7 @@ export class CommandHandler {
         description: 'Exibir menu de ajuda',
         aliases: ['?', 'comandos'],
         handler: async (ctx: CommandContext) => {
-          await this.client.sendMessage(ctx.celular, MESSAGES.MENU_PRINCIPAL);
+          await ctx.sendMessage(ctx.celular, MESSAGES.MENU_PRINCIPAL);
           return { handled: true };
         },
       },
@@ -97,7 +100,7 @@ export class CommandHandler {
         aliases: ['meu status', 'meus monitoramentos'],
         handler: async (ctx: CommandContext) => {
           if (!ctx.inscricoes.length) {
-            await this.client.sendMessage(ctx.celular, MESSAGES.ERRO_CADASTRO_NAO_ENCONTRADO);
+            await ctx.sendMessage(ctx.celular, MESSAGES.ERRO_CADASTRO_NAO_ENCONTRADO);
             return { handled: true };
           }
 
@@ -109,7 +112,7 @@ export class CommandHandler {
             monitorandoGas: i.monitorandoGas,
           })));
 
-          await this.client.sendMessage(ctx.celular, info);
+          await ctx.sendMessage(ctx.celular, info);
           return { handled: true };
         },
       },
@@ -119,7 +122,7 @@ export class CommandHandler {
         description: 'Como enviar leituras',
         aliases: ['ajuda leitura', 'help leitura'],
         handler: async (ctx: CommandContext) => {
-          await this.client.sendMessage(ctx.celular, MESSAGES.HELP_ENVIAR_LEITURA);
+          await ctx.sendMessage(ctx.celular, MESSAGES.HELP_ENVIAR_LEITURA);
           return { handled: true };
         },
       },
@@ -129,7 +132,7 @@ export class CommandHandler {
         description: 'Listar todos os comandos',
         aliases: ['todos comandos', 'opcoes'],
         handler: async (ctx: CommandContext) => {
-          await this.client.sendMessage(ctx.celular, MESSAGES.HELP_COMMANDS);
+          await ctx.sendMessage(ctx.celular, MESSAGES.HELP_COMMANDS);
           return { handled: true };
         },
       },

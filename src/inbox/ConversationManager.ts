@@ -55,6 +55,7 @@ export interface Conversation {
     idImovel?: string;
   };
   novoImovel?: ConversaNovoImovel;
+  source?: 'medidor' | 'waclient';
 }
 
 /**
@@ -116,7 +117,8 @@ export class ConversationManager {
         ...conv,
         name: existing.name || conv.name,
         phoneNumber: existing.phoneNumber || conv.phoneNumber,
-        isHuman: existing.isHuman || conv.isHuman,
+        isHuman: conv.isHuman !== undefined ? conv.isHuman : existing.isHuman,
+        source: existing.source || conv.source || 'waclient',
         unreadCount: Math.max(existing.unreadCount || 0, conv.unreadCount || 0),
         messages,
         lastMessage,
@@ -138,9 +140,9 @@ export class ConversationManager {
       numberId: config.whatsapp.numberId,
       version: apiVersion,
     });
-    this.gastosManager = new GastosManager(this.client);
-    this.propertyManager = new PropertyManager(this.client);
-    this.commandHandler = new CommandHandler(this.client);
+    this.gastosManager = new GastosManager(this.client, this.enviarMensagem.bind(this));
+    this.propertyManager = new PropertyManager(this.client, this.enviarMensagem.bind(this));
+    this.commandHandler = new CommandHandler(this.client, this.enviarMensagem.bind(this));
     
     // Registrar comando de adicionar casa
     this.registerPropertyCommands();
@@ -161,7 +163,7 @@ export class ConversationManager {
         const verificacao = await this.propertyManager.podeAdicionarImovel(ctx.celular);
         
         if (!verificacao.pode) {
-          await this.client.sendMessage(ctx.celular, `❌ ${verificacao.erro}`);
+          await this.enviarMensagem(ctx.celular, `❌ ${verificacao.erro}`);
           return { handled: true };
         }
 
@@ -287,6 +289,7 @@ export class ConversationManager {
       unreadCount: 0,
       isHuman: false,
       messages: [],
+      source: 'medidor',
     };
     this.conversations.set(idNormalizado, conversa);
     return conversa;
@@ -470,7 +473,10 @@ export class ConversationManager {
 
             // Obter conversa - pode ser reatribuída durante o processamento
             let conversa = this.obterOuCriarConversa(de);
-            
+
+            // Bot silencioso quando operador humano assumiu a conversa
+            if (conversa.isHuman) continue;
+
             // Verificar fluxo de novo imóvel primeiro
             if (conversa.novoImovel) {
               const resultado = await this.propertyManager.processarProximoPasso(
@@ -592,6 +598,7 @@ export class ConversationManager {
               inscricoes,
               gastosManager: this.gastosManager,
               client: this.client,
+              sendMessage: this.enviarMensagem.bind(this),
             });
 
             if (commandResult.handled) {
@@ -719,6 +726,7 @@ export class ConversationManager {
       return false;
     }
     conversa.isHuman = ativo;
+    this.persistirConversas().catch((e) => this.log(`❌ Erro ao persistir controle: ${e?.message}`));
     this.log('✅ Controle alterado');
     return true;
   }
@@ -791,6 +799,7 @@ export class ConversationManager {
       unreadCount: 0,
       isHuman: false,
       messages: [],
+      source: 'medidor',
     };
     
     this.conversations.set(telefoneNormalizado, conversa);

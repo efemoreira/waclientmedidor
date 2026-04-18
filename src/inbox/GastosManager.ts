@@ -33,9 +33,11 @@ export interface InscritoDados {
  */
 export class GastosManager {
   private client: WhatsApp;
+  private _send: (to: string, text: string) => Promise<any>;
 
-  constructor(client: WhatsApp) {
+  constructor(client: WhatsApp, sendMessageFn?: (to: string, text: string) => Promise<any>) {
     this.client = client;
+    this._send = sendMessageFn || ((to, text) => client.sendMessage(to, text));
   }
 
   /**
@@ -118,7 +120,7 @@ export class GastosManager {
 
     if (this.precisaRelatorioSemanal(inscricao.ultimoRelatorioSemanal)) {
       try {
-        await this.client.sendMessage(de, MESSAGES.RELATORIO_SEMANAL({
+        await this._send(de, MESSAGES.RELATORIO_SEMANAL({
           idImovel,
           tipo,
           consumoSemana: result.consumoSemana,
@@ -132,7 +134,7 @@ export class GastosManager {
 
     if (this.precisaRelatorioMensal(inscricao.ultimoRelatorioMensal)) {
       try {
-        await this.client.sendMessage(de, MESSAGES.RELATORIO_MENSAL({
+        await this._send(de, MESSAGES.RELATORIO_MENSAL({
           idImovel,
           tipo,
           consumoMes: result.consumoMes,
@@ -178,11 +180,11 @@ export class GastosManager {
    */
   async responderMeuUid(de: string, inscricoes: InscritoDados[]): Promise<void> {
     if (!inscricoes.length) {
-      await this.client.sendMessage(de, MESSAGES.ERRO_CADASTRO_NAO_ENCONTRADO);
+      await this._send(de, MESSAGES.ERRO_CADASTRO_NAO_ENCONTRADO);
       return;
     }
     const uids = inscricoes.map((i) => ({ uid: i.uid, idImovel: i.idImovel }));
-    await this.client.sendMessage(de, MESSAGES.INFO_MEUS_UIDS(uids));
+    await this._send(de, MESSAGES.INFO_MEUS_UIDS(uids));
   }
 
   /**
@@ -190,7 +192,7 @@ export class GastosManager {
    */
   async responderMinhasCasas(de: string, inscricoes: InscritoDados[]): Promise<void> {
     const lista = await this.formatarCasas(inscricoes);
-    await this.client.sendMessage(de, MESSAGES.INFO_MINHAS_CASAS(lista));
+    await this._send(de, MESSAGES.INFO_MINHAS_CASAS(lista));
   }
 
   /**
@@ -198,11 +200,11 @@ export class GastosManager {
    */
   async responderComoIndicar(de: string, inscricoes: InscritoDados[]): Promise<void> {
     if (!inscricoes.length) {
-      await this.client.sendMessage(de, MESSAGES.ERRO_CADASTRO_NAO_ENCONTRADO);
+      await this._send(de, MESSAGES.ERRO_CADASTRO_NAO_ENCONTRADO);
       return;
     }
     const uids = inscricoes.map((i) => i.uid);
-    await this.client.sendMessage(de, MESSAGES.INFO_COMO_INDICAR(uids));
+    await this._send(de, MESSAGES.INFO_COMO_INDICAR(uids));
   }
 
   /**
@@ -258,13 +260,13 @@ export class GastosManager {
     }
 
     if (!pending.tipo) {
-      await this.client.sendMessage(de, MESSAGES.ERRO_PRECISA_TIPO);
+      await this._send(de, MESSAGES.ERRO_PRECISA_TIPO);
       return { processado: true, proximoStage: 'tipo' };
     }
 
     if (!pending.idImovel) {
       const lista = await this.formatarCasas(inscricoes);
-      await this.client.sendMessage(de, `Qual o ID do imóvel?\n${lista}`);
+      await this._send(de, `Qual o ID do imóvel?\n${lista}`);
       return { processado: true, proximoStage: 'imovel' };
     }
 
@@ -290,14 +292,14 @@ export class GastosManager {
         media: result.media,
       });
       
-      await this.client.sendMessage(de, reply);
+      await this._send(de, reply);
 
       const inscricao = inscricoes.find(i => i.idImovel === pending.idImovel);
       if (inscricao) {
         await this.enviarRelatoriosPeriodicos(de, pending.idImovel, pending.tipo, result, inscricao);
       }
     } else {
-      await this.client.sendMessage(de, MESSAGES.ERRO_LEITURA_REGISTRO(result.erro));
+      await this._send(de, MESSAGES.ERRO_LEITURA_REGISTRO(result.erro));
     }
 
     return { processado: true };
@@ -366,7 +368,7 @@ export class GastosManager {
     inscricoes: InscritoDados[]
   ): Promise<{ processado: boolean; erro?: string; pendingLeitura?: PendingLeitura }> {
     if (!inscricoes.length) {
-      await this.client.sendMessage(de, MESSAGES.ERRO_CADASTRO_NAO_ENCONTRADO);
+      await this._send(de, MESSAGES.ERRO_CADASTRO_NAO_ENCONTRADO);
       return { processado: true };
     }
 
@@ -379,7 +381,7 @@ export class GastosManager {
       const imovelEncontrado = inscricoes.find((i) => i.idImovel.toLowerCase() === leituraId.toLowerCase());
       if (!imovelEncontrado) {
         const lista = await this.formatarCasas(inscricoes);
-        await this.client.sendMessage(de, `ID de imóvel não encontrado.\n${lista}`);
+        await this._send(de, `ID de imóvel não encontrado.\n${lista}`);
         return { processado: true };
       }
     } else if (!leituraId && inscricoes.length > 1) {
@@ -427,14 +429,14 @@ export class GastosManager {
         media: result.media,
       });
       
-      await this.client.sendMessage(de, reply);
+      await this._send(de, reply);
 
       const inscricao = inscricoes.find(i => i.idImovel === idImovel);
       if (inscricao) {
         await this.enviarRelatoriosPeriodicos(de, idImovel, leituraTipo, result, inscricao);
       }
     } else {
-      await this.client.sendMessage(de, MESSAGES.ERRO_LEITURA_REGISTRO(result.erro));
+      await this._send(de, MESSAGES.ERRO_LEITURA_REGISTRO(result.erro));
     }
 
     return { processado: true };

@@ -161,12 +161,54 @@ body {
   margin-bottom: 8px;
   background: var(--panel-2);
   border: 1px solid transparent;
+  border-left: 3px solid transparent;
   cursor: pointer;
 }
 
 .conversation.active {
   border-color: var(--primary);
   background: #0b1220;
+}
+
+/* Cores por origem do sistema */
+.conversation.source-medidor {
+  border-left-color: #22c55e;
+}
+
+.conversation.source-waclient {
+  border-left-color: #3b82f6;
+}
+
+.conversation.active.source-medidor {
+  border-color: #22c55e;
+  background: #071410;
+}
+
+.conversation.active.source-waclient {
+  border-color: #3b82f6;
+  background: #070e1a;
+}
+
+.source-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.source-badge.medidor {
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+}
+
+.source-badge.waclient {
+  background: rgba(59, 130, 246, 0.15);
+  color: #93c5fd;
 }
 
 .conversation .name {

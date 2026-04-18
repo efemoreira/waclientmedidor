@@ -296,10 +296,8 @@ function renderConversationList() {
 
   conversationList.innerHTML = '';
   filtered.forEach((c) => {
-    const source = c.source || 'waclient';
-    const sourceLabel = source === 'medidor' ? 'Medidor' : 'WAClient';
     const item = document.createElement('div');
-    item.className = `conversation source-${source} ${state.selectedId === c.id ? 'active' : ''}`;
+    item.className = `conversation ${state.selectedId === c.id ? 'active' : ''}`;
     item.addEventListener('click', () => {
       state.selectedId = c.id;
       fetchConversation(c.id);
@@ -307,10 +305,7 @@ function renderConversationList() {
     });
 
     item.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-        <div class="name">${c.name || c.phoneNumber}</div>
-        <span class="source-badge ${source}">${sourceLabel}</span>
-      </div>
+      <div class="name">${c.name || c.phoneNumber}</div>
       <div class="last">${c.lastMessage || 'Sem mensagens ainda'}</div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">
         <span class="last">${c.lastTimestamp ? formatTime(c.lastTimestamp) : ''}</span>

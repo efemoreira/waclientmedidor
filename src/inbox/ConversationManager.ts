@@ -146,9 +146,6 @@ export class ConversationManager {
     
     // Registrar comando de adicionar casa
     this.registerPropertyCommands();
-    
-    // Carregar conversas do armazenamento
-    this.carregarConversas().catch(console.error);
   }
 
   /**

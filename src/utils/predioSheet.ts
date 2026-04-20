@@ -1,7 +1,7 @@
 import { google } from 'googleapis';
 import { logger } from './logger';
 
-const SHEET_ID = process.env.GOOGLE_SHEET_ID || '1gWmeKdve801yhFST_O0grBefYW_fDLyCr8nwND_98EQ';
+const SHEET_ID = process.env.GOOGLE_SHEET_ID || '1Duvyp8pp_8_joBpDa1TvgfSuEvcyKedffNm3_soPImo';
 const CLIENT_EMAIL = process.env.GOOGLE_SHEETS_CLIENT_EMAIL || '';
 const PRIVATE_KEY = process.env.GOOGLE_SHEETS_PRIVATE_KEY || '';
 

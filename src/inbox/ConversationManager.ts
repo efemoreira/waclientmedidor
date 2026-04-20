@@ -567,6 +567,13 @@ export class ConversationManager {
 
             // Verificar se já é inscrito
             const verificacao = await verificarInscrito(de);
+
+            // Se houve erro de credenciais ou falha na planilha, não iniciar inscrição
+            if (verificacao.erro) {
+              this.log(`❌ Erro ao verificar inscrição: ${verificacao.erro}`);
+              continue;
+            }
+
             if (!verificacao.inscrito) {
               // Não está inscrito - pedir inscrição
               conversa.inscricaoStage = 'nome';

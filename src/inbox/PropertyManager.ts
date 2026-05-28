@@ -42,11 +42,11 @@ export class PropertyManager {
   async iniciarAdicaoImovel(celular: string, nome: string): Promise<ConversaNovoImovel> {
     await this._send(
       celular,
-      `🏠 *Adicionar Novo Imóvel*
+      `Adicionar novo imóvel
 
-Vamos cadastrar um novo imóvel para você!
+Vamos cadastrar um novo imóvel para você.
 
-Por favor, me diga o *bairro* deste imóvel.`
+Por favor, me diga o bairro deste imóvel.`
     );
 
     return {
@@ -72,9 +72,9 @@ Por favor, me diga o *bairro* deste imóvel.`
         data.bairro = resposta;
         await this._send(
           data.celular!,
-          `✅ Bairro: ${resposta}
+          `Bairro: ${resposta}
 
-Agora me diga o *CEP* do imóvel.`
+Agora me diga o CEP do imóvel.`
         );
         return {
           concluido: false,
@@ -88,9 +88,9 @@ Agora me diga o *CEP* do imóvel.`
         data.cep = resposta;
         await this._send(
           data.celular!,
-          `✅ CEP: ${resposta}
+          `CEP: ${resposta}
 
-Qual é o *tipo de imóvel*?
+Qual é o tipo de imóvel?
 (Exemplos: casa, apartamento, comercial, etc.)`
         );
         return {
@@ -105,9 +105,9 @@ Qual é o *tipo de imóvel*?
         data.tipoImovel = resposta;
         await this._send(
           data.celular!,
-          `✅ Tipo: ${resposta}
+          `Tipo: ${resposta}
 
-Quantas *pessoas moram* neste imóvel?`
+Quantas pessoas moram neste imóvel?`
         );
         return {
           concluido: false,
@@ -135,15 +135,15 @@ Quantas *pessoas moram* neste imóvel?`
           if (resultado.ok) {
             await this._send(
               data.celular!,
-              `🎉 *Imóvel cadastrado com sucesso!*
+              `Imóvel cadastrado com sucesso.
 
-📋 *Detalhes:*
-🏠 ID do Imóvel: ${resultado.idImovel}
-🆔 UID: ${resultado.uid}
-📍 Bairro: ${data.bairro}
-👥 Pessoas: ${data.pessoas}
+Detalhes:
+ID do imóvel: ${resultado.idImovel}
+UID: ${resultado.uid}
+Bairro: ${data.bairro}
+Pessoas: ${data.pessoas}
 
-Agora você pode enviar leituras para este imóvel usando o ID: *${resultado.idImovel}*
+Agora você pode enviar leituras para este imóvel usando o ID: ${resultado.idImovel}
 
 Exemplo: ${resultado.idImovel} agua 123`
             );
@@ -154,11 +154,11 @@ Exemplo: ${resultado.idImovel} agua 123`
           } else {
             await this._send(
               data.celular!,
-              `❌ Erro ao cadastrar imóvel.
+              `Erro ao cadastrar imóvel.
 
 ${resultado.erro || 'Tente novamente mais tarde.'}
 
-Digite *adicionar casa* para tentar novamente.`
+Digite adicionar casa para tentar novamente.`
             );
             return { concluido: true, erro: resultado.erro };
           }
@@ -166,7 +166,7 @@ Digite *adicionar casa* para tentar novamente.`
           logger.error('PropertyManager', `Erro ao adicionar imóvel: ${erro?.message || erro}`);
           await this._send(
             data.celular!,
-            `❌ Ocorreu um erro ao cadastrar o imóvel.
+            `Ocorreu um erro ao cadastrar o imóvel.
 
 Por favor, tente novamente mais tarde ou entre em contato com o suporte.`
           );

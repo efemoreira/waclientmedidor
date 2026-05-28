@@ -161,21 +161,6 @@ export async function adicionarInscrito(params: {
   try {
     const sheets = google.sheets({ version: 'v4', auth });
 
-    // Encontrar última linha não vazia
-    const colA = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A:A`,
-      majorDimension: 'COLUMNS',
-      valueRenderOption: 'FORMATTED_VALUE',
-    });
-
-    const colAValues = colA.data?.values?.[0] || [];
-    let lastRow = colAValues.length;
-    while (lastRow > 0 && !colAValues[lastRow - 1]) {
-      lastRow -= 1;
-    }
-    const targetRow = lastRow + 1;
-
     // Gerar UID e ID_Imovel
     const uid = randomUUID();
     const idImovel = `IMV${Date.now()}`;
@@ -185,32 +170,34 @@ export async function adicionarInscrito(params: {
 
     logger.info('Inscritos', `Adicionando novo inscrito: ${params.nome} (${celularFormatado})`);
 
-    // Adicionar dados nas colunas conforme cabeçalho
-    await sheets.spreadsheets.values.batchUpdate({
+    // Usar append evita colisões quando múltiplas requisições gravam ao mesmo tempo.
+    await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!A:S`,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
       requestBody: {
-        valueInputOption: 'USER_ENTERED',
-        data: [
-          { range: `${SHEET_NAME}!A${targetRow}`, values: [[uid]] },
-          { range: `${SHEET_NAME}!B${targetRow}`, values: [[idImovel]] },
-          { range: `${SHEET_NAME}!C${targetRow}`, values: [[params.nome]] },
-          { range: `${SHEET_NAME}!D${targetRow}`, values: [[celularFormatado]] },
-          { range: `${SHEET_NAME}!E${targetRow}`, values: [['']] },
-          { range: `${SHEET_NAME}!F${targetRow}`, values: [[datainscricao]] },
-          { range: `${SHEET_NAME}!G${targetRow}`, values: [[params.bairro || '']] },
-          { range: `${SHEET_NAME}!H${targetRow}`, values: [[params.cep || '']] },
-          { range: `${SHEET_NAME}!I${targetRow}`, values: [[params.tipo_imovel || '']] },
-          { range: `${SHEET_NAME}!J${targetRow}`, values: [[params.pessoas || '']] },
-          { range: `${SHEET_NAME}!K${targetRow}`, values: [['Simples']] },
-          { range: `${SHEET_NAME}!L${targetRow}`, values: [['']] },
-          { range: `${SHEET_NAME}!M${targetRow}`, values: [[proximoPagamento]] },
-          { range: `${SHEET_NAME}!N${targetRow}`, values: [[params.uid_indicador || '']] },
-          { range: `${SHEET_NAME}!O${targetRow}`, values: [[0]] },
-          { range: `${SHEET_NAME}!P${targetRow}`, values: [[0]] },
-          { range: `${SHEET_NAME}!Q${targetRow}`, values: [[true]] },
-          { range: `${SHEET_NAME}!R${targetRow}`, values: [[false]] },
-          { range: `${SHEET_NAME}!S${targetRow}`, values: [[false]] },
-        ],
+        values: [[
+          uid,
+          idImovel,
+          params.nome,
+          celularFormatado,
+          '',
+          datainscricao,
+          params.bairro || '',
+          params.cep || '',
+          params.tipo_imovel || '',
+          params.pessoas || '',
+          'Simples',
+          '',
+          proximoPagamento,
+          params.uid_indicador || '',
+          0,
+          0,
+          true,
+          false,
+          false,
+        ]],
       },
     });
 

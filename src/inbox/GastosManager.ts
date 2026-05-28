@@ -290,6 +290,12 @@ export class GastosManager {
         dias: result.dias,
         consumo: result.consumo,
         media: result.media,
+        consumoDia: result.consumoDia,
+        mediaDia: result.mediaDia,
+        consumoSemana: result.consumoSemana,
+        mediaSemana: result.mediaSemana,
+        consumoMes: result.consumoMes,
+        mediaMes: result.mediaMes,
       });
       
       await this._send(de, reply);
@@ -427,6 +433,12 @@ export class GastosManager {
         dias: result.dias,
         consumo: result.consumo,
         media: result.media,
+        consumoDia: result.consumoDia,
+        mediaDia: result.mediaDia,
+        consumoSemana: result.consumoSemana,
+        mediaSemana: result.mediaSemana,
+        consumoMes: result.consumoMes,
+        mediaMes: result.mediaMes,
       });
       
       await this._send(de, reply);

@@ -39,6 +39,22 @@ interface AcumuladoRow {
   mediaDia: number;
 }
 
+interface ResumoConsumo {
+  leituraAnterior?: number;
+  diasUltimoEnvio: number;
+  consumoUltimoEnvio: number;
+  mediaUltimoEnvio: number;
+  diasDia: number;
+  consumoDia: number;
+  mediaDia: number;
+  diasSemana: number;
+  consumoSemana: number;
+  mediaSemana: number;
+  diasMes: number;
+  consumoMes: number;
+  mediaMes: number;
+}
+
 
 /**
  * Normaliza a chave privada da conta de serviço Google.
@@ -157,6 +173,75 @@ export function buscarUltimaLeitura(
     .sort((a, b) => b.data.getTime() - a.data.getTime());
   if (!filtrados.length) return null;
   return { leituraAtual: filtrados[0].leituraAtual, data: filtrados[0].data, dataStr: filtrados[0].dataStr };
+}
+
+function ordenarLeiturasPorData(dados: LeituraRow[], id: string, tipo: string): LeituraRow[] {
+  return dados
+    .filter((r) => r.id === id && r.tipo.toLowerCase() === tipo.toLowerCase())
+    .sort((a, b) => a.data.getTime() - b.data.getTime());
+}
+
+function buscarLeituraBasePeriodo(registros: LeituraRow[], inicio: Date): LeituraRow | undefined {
+  let base: LeituraRow | undefined;
+
+  for (const registro of registros) {
+    if (registro.data <= inicio) {
+      base = registro;
+      continue;
+    }
+    break;
+  }
+
+  if (base) return base;
+  return registros.find((registro) => registro.data > inicio);
+}
+
+function calcularResumoConsumo(
+  dados: LeituraRow[],
+  id: string,
+  tipo: string,
+  leituraAtual: number,
+  agora: Date
+): ResumoConsumo {
+  const registros = ordenarLeiturasPorData(dados, id, tipo);
+  const hoje = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate());
+  const inicioDia = hoje;
+  const inicioSemana = detectarInicioSemana(agora);
+  const inicioMes = detectarInicioMes(agora);
+
+  const ultimaAnterior = registros.length > 0 ? registros[registros.length - 1] : undefined;
+  const consumoUltimoEnvio = ultimaAnterior ? Math.max(0, leituraAtual - ultimaAnterior.leituraAtual) : 0;
+  const diasUltimoEnvio = ultimaAnterior ? Math.max(1, calcularDias(hoje, ultimaAnterior.data)) : 0;
+  const mediaUltimoEnvio = ultimaAnterior ? calcularMedia(consumoUltimoEnvio, diasUltimoEnvio) : 0;
+
+  const calcularPeriodo = (inicio: Date): { consumo: number; media: number } => {
+    const base = buscarLeituraBasePeriodo(registros, inicio);
+    if (!base) return { consumo: 0, media: 0 };
+
+    const consumo = Math.max(0, leituraAtual - base.leituraAtual);
+    const dias = Math.max(1, calcularDias(hoje, inicio));
+    return { consumo, media: calcularMedia(consumo, dias) };
+  };
+
+  const dia = calcularPeriodo(inicioDia);
+  const semana = calcularPeriodo(inicioSemana);
+  const mes = calcularPeriodo(inicioMes);
+
+  return {
+    leituraAnterior: ultimaAnterior?.leituraAtual,
+    diasUltimoEnvio,
+    consumoUltimoEnvio,
+    mediaUltimoEnvio,
+    diasDia: Math.max(1, calcularDias(hoje, inicioDia)),
+    consumoDia: dia.consumo,
+    mediaDia: dia.media,
+    diasSemana: Math.max(1, calcularDias(hoje, inicioSemana)),
+    consumoSemana: semana.consumo,
+    mediaSemana: semana.media,
+    diasMes: Math.max(1, calcularDias(hoje, inicioMes)),
+    consumoMes: mes.consumo,
+    mediaMes: mes.media,
+  };
 }
 
 /**
@@ -411,19 +496,17 @@ export async function atualizarAcumuladoSemana(
     return { consumoAcumulado: consumo, mediaDia: novaMedia };
   }
 
-  // Semana atual: acumular
-  const novoConsumo = existente.consumoAcumulado + consumo;
-  const novosDias = existente.diasAcumulados + dias;
-  const novaMedia = calcularMedia(novoConsumo, novosDias);
+  // Semana atual: atualizar snapshot atual do período
+  const novaMedia = calcularMedia(consumo, dias);
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
     range: `${ACUMULADO_SEMANA_SHEET}!A${existente.rowIndex}:G${existente.rowIndex}`,
     valueInputOption: 'USER_ENTERED',
     requestBody: {
-      values: [[id, tipo, existente.dataInicio, leituraAtual, fmt(novoConsumo), novosDias, fmt(novaMedia)]],
+      values: [[id, tipo, existente.dataInicio, leituraAtual, fmt(consumo), dias, fmt(novaMedia)]],
     },
   });
-  return { consumoAcumulado: novoConsumo, mediaDia: novaMedia };
+  return { consumoAcumulado: consumo, mediaDia: novaMedia };
 }
 
 /**
@@ -489,19 +572,17 @@ export async function atualizarAcumuladoMes(
     return { consumoAcumulado: consumo, mediaDia: novaMedia };
   }
 
-  // Mês atual: acumular
-  const novoConsumo = existente.consumoAcumulado + consumo;
-  const novosDias = existente.diasAcumulados + dias;
-  const novaMedia = calcularMedia(novoConsumo, novosDias);
+  // Mês atual: atualizar snapshot atual do período
+  const novaMedia = calcularMedia(consumo, dias);
   await sheets.spreadsheets.values.update({
     spreadsheetId: SHEET_ID,
     range: `${ACUMULADO_MES_SHEET}!A${existente.rowIndex}:G${existente.rowIndex}`,
     valueInputOption: 'USER_ENTERED',
     requestBody: {
-      values: [[id, tipo, existente.dataInicio, leituraAtual, fmt(novoConsumo), novosDias, fmt(novaMedia)]],
+      values: [[id, tipo, existente.dataInicio, leituraAtual, fmt(consumo), dias, fmt(novaMedia)]],
     },
   });
-  return { consumoAcumulado: novoConsumo, mediaDia: novaMedia };
+  return { consumoAcumulado: consumo, mediaDia: novaMedia };
 }
 
 /**
@@ -645,6 +726,8 @@ export async function appendPredioEntry(params: {
   data?: string;
   dias?: number;
   media?: string;
+  consumoDia?: string;
+  mediaDia?: string;
   consumoSemana?: string;
   mediaSemana?: string;
   consumoMes?: string;
@@ -667,49 +750,49 @@ export async function appendPredioEntry(params: {
 
   try {
     // 1) Ler cada aba apenas uma vez, em paralelo
-    const [{ rows: leituras, totalLinhas }, acumuladosSemana, acumuladosMes] = await Promise.all([
+    const [{ rows: leituras }, acumuladosSemana, acumuladosMes] = await Promise.all([
       lerLeituras(sheets),
       lerAcumulado(sheets, ACUMULADO_SEMANA_SHEET),
       lerAcumulado(sheets, ACUMULADO_MES_SHEET),
     ]);
 
     // 2) Calcular valores individuais
-    const ultimaAnterior = buscarUltimaLeitura(leituras, params.predio, tipo);
-    const leituraAnterior = ultimaAnterior ? ultimaAnterior.leituraAtual : 0;
+    const resumo = calcularResumoConsumo(leituras, params.predio, tipo, leituraAtual, agora);
     const dataAtual = parseDateBR(dataStr) || agora;
-    const dias = ultimaAnterior ? calcularDias(dataAtual, ultimaAnterior.data) : 0;
-    const consumo = ultimaAnterior ? calcularConsumoIndividual(leituraAtual, leituraAnterior) : 0;
-    const media = calcularMedia(consumo, dias);
 
-    const targetRow = totalLinhas + 1;
-
-    logger.info('predioSheet', `Gravando linha ${targetRow} [${params.predio}/${tipo}] leitura=${leituraAtual} consumo=${consumo} dias=${dias}`);
+    logger.info('predioSheet', `Gravando leitura [${params.predio}/${tipo}] leitura=${leituraAtual} consumo=${resumo.consumoUltimoEnvio} dias=${resumo.diasUltimoEnvio}`);
 
     // 3) Salvar nova linha em leituras (8 colunas, sem fórmulas)
-    await sheets.spreadsheets.values.batchUpdate({
+    const appendResponse = await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
+      range: `${LEITURAS_SHEET}!A:H`,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
       requestBody: {
-        valueInputOption: 'USER_ENTERED',
-        data: [
-          { range: `${LEITURAS_SHEET}!A${targetRow}`, values: [[dataStr]] },
-          { range: `${LEITURAS_SHEET}!B${targetRow}`, values: [[params.predio]] },
-          { range: `${LEITURAS_SHEET}!C${targetRow}`, values: [[tipo]] },
-          { range: `${LEITURAS_SHEET}!D${targetRow}`, values: [[leituraAtual]] },
-          { range: `${LEITURAS_SHEET}!E${targetRow}`, values: [[leituraAnterior]] },
-          { range: `${LEITURAS_SHEET}!F${targetRow}`, values: [[consumo]] },
-          { range: `${LEITURAS_SHEET}!G${targetRow}`, values: [[dias]] },
-          { range: `${LEITURAS_SHEET}!H${targetRow}`, values: [[fmt(media)]] },
-        ],
+        values: [[
+          dataStr,
+          params.predio,
+          tipo,
+          leituraAtual,
+          resumo.leituraAnterior || 0,
+          resumo.consumoUltimoEnvio,
+          resumo.diasUltimoEnvio,
+          fmt(resumo.mediaUltimoEnvio),
+        ]],
       },
     });
+
+    const updatedRange = appendResponse.data?.updates?.updatedRange || '';
+    const rowMatch = updatedRange.match(/![A-Z]+(\d+):/i);
+    const targetRow = rowMatch ? Number(rowMatch[1]) : undefined;
 
     // 4) Atualizar acumulado_semana (reset individual por Id+Tipo se semana mudou)
     const semanaResult = await atualizarAcumuladoSemana(sheets, acumuladosSemana, {
       id: params.predio,
       tipo,
       leituraAtual,
-      consumo,
-      dias,
+      consumo: resumo.consumoSemana,
+      dias: resumo.diasSemana,
       dataAtualStr: dataStr,
       agora,
     });
@@ -719,8 +802,8 @@ export async function appendPredioEntry(params: {
       id: params.predio,
       tipo,
       leituraAtual,
-      consumo,
-      dias,
+      consumo: resumo.consumoMes,
+      dias: resumo.diasMes,
       dataAtualStr: dataStr,
       agora,
     });
@@ -730,15 +813,17 @@ export async function appendPredioEntry(params: {
 
     return {
       ok: true,
-      consumo: fmt(consumo),
-      anterior: leituraAnterior > 0 || ultimaAnterior ? String(leituraAnterior) : '',
+      consumo: fmt(resumo.consumoUltimoEnvio),
+      anterior: resumo.leituraAnterior !== undefined ? String(resumo.leituraAnterior) : '',
       data: dataStr,
-      dias,
-      media: fmt(media),
-      consumoSemana: fmt(semanaResult.consumoAcumulado),
-      mediaSemana: fmt(semanaResult.mediaDia),
-      consumoMes: fmt(mesResult.consumoAcumulado),
-      mediaMes: fmt(mesResult.mediaDia),
+      dias: resumo.diasUltimoEnvio,
+      media: fmt(resumo.mediaUltimoEnvio),
+      consumoDia: fmt(resumo.consumoDia),
+      mediaDia: fmt(resumo.mediaDia),
+      consumoSemana: fmt(resumo.consumoSemana),
+      mediaSemana: fmt(resumo.mediaSemana),
+      consumoMes: fmt(resumo.consumoMes),
+      mediaMes: fmt(resumo.mediaMes),
       row: targetRow,
     };
   } catch (erro: any) {

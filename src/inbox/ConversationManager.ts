@@ -3,7 +3,7 @@ import type { WebhookPayload, WhatsAppMessage } from '../wabapi/types';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { appendPredioEntry } from '../utils/predioSheet';
-import { verificarInscrito, adicionarInscrito, listarInscricoesPorCelular } from '../utils/inscritosSheet';
+import { verificarInscrito, adicionarInscrito, listarInscricoesPorCelular, type InscricaoInfo } from '../utils/inscritosSheet';
 import { GastosManager } from './GastosManager';
 import { normalizarTexto, normalizarWaId } from '../utils/text-normalizer';
 import { lerConversas, salvarConversas, lerMeta, salvarMeta } from '../utils/conversation-storage';
@@ -35,6 +35,7 @@ export interface Conversation {
   isHuman: boolean;
   messages: MessageRecord[];
   inscricaoStage?:
+    | 'consentimento'
     | 'nome'
     | 'bairro'
     | 'cep'
@@ -48,6 +49,7 @@ export interface Conversation {
     tipo_imovel?: string;
     pessoas?: string;
     uid_indicador?: string;
+    lgpd_aceite_data?: string;
   };
   pendingLeitura?: {
     valor?: string;
@@ -516,6 +518,20 @@ export class ConversationManager {
 
               try {
                 switch (stage) {
+                  case 'consentimento': {
+                    const aceitou = /^(sim|concordo|aceito|ok|sim\s*concordo)$/i.test(
+                      normalizarTexto(texto).trim()
+                    );
+                    if (aceitou) {
+                      conversa.inscricaoData!.lgpd_aceite_data = new Date().toLocaleDateString('pt-BR', {
+                        timeZone: 'America/Sao_Paulo',
+                      });
+                      await avancar('nome', MESSAGES.INSCRICAO_NOME);
+                    } else {
+                      await this.enviarMensagem(de, MESSAGES.LGPD_CONSENTIMENTO_REPETIR);
+                    }
+                    break;
+                  }
                   case 'nome':
                     await avancar('bairro', MESSAGES.INSCRICAO_BAIRRO);
                     break;
@@ -541,6 +557,7 @@ export class ConversationManager {
                       tipo_imovel: dados?.tipo_imovel || '',
                       pessoas: dados?.pessoas || '',
                       uid_indicador: dados?.uid_indicador || '',
+                      lgpdAceiteData: dados?.lgpd_aceite_data || '',
                     });
 
                     if (resultado.ok) {
@@ -575,8 +592,8 @@ export class ConversationManager {
             }
 
             if (!verificacao.inscrito) {
-              // Não está inscrito - pedir inscrição
-              conversa.inscricaoStage = 'nome';
+              // Não está inscrito - pedir consentimento LGPD antes de iniciar a inscrição
+              conversa.inscricaoStage = 'consentimento';
               conversa.inscricaoData = {};
               await this.persistirConversas();
               const reply = MESSAGES.WELCOME_NEW_USER;
@@ -606,6 +623,7 @@ export class ConversationManager {
             });
 
             if (commandResult.handled) {
+              await this.enviarNudgeSeNecessario(de, inscricoes);
               continue;
             }
 
@@ -655,6 +673,7 @@ export class ConversationManager {
 
             // Comando não reconhecido - mostrar menu
             await this.enviarMensagem(de, MESSAGES.COMANDO_NAO_RECONHECIDO);
+            await this.enviarNudgeSeNecessario(de, inscricoes);
           }
         }
 
@@ -733,6 +752,22 @@ export class ConversationManager {
     this.persistirConversas().catch((e) => this.log(`❌ Erro ao persistir controle: ${e?.message}`));
     this.log('✅ Controle alterado');
     return true;
+  }
+
+  /**
+   * Anexa um lembrete curto à resposta atual quando alguma leitura monitorada
+   * está muito atrasada. Nunca envia nada por conta própria — só aproveita uma
+   * resposta que já seria enviada por ter o usuário mandado uma mensagem.
+   */
+  private async enviarNudgeSeNecessario(de: string, inscricoes: InscricaoInfo[]): Promise<void> {
+    try {
+      const nudge = await this.gastosManager.obterNudgeAtraso(inscricoes);
+      if (nudge) {
+        await this.enviarMensagem(de, nudge);
+      }
+    } catch (erro: any) {
+      this.log(`❌ Erro ao verificar nudge de atraso: ${erro?.message || erro}`);
+    }
   }
 
   /**

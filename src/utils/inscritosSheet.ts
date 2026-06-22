@@ -146,6 +146,7 @@ export async function adicionarInscrito(params: {
   tipo_imovel?: string;
   pessoas?: string;
   uid_indicador?: string;
+  lgpdAceiteData?: string;
 }): Promise<{
   ok: boolean;
   uid?: string;
@@ -173,7 +174,9 @@ export async function adicionarInscrito(params: {
     // Usar append evita colisões quando múltiplas requisições gravam ao mesmo tempo.
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A:S`,
+      // Colunas T (Ultimo_relatorio_semanal) e U (Ultimo_relatorio_mensal) ficam
+      // vazias até o primeiro relatório periódico (ver atualizarUltimoRelatorio).
+      range: `${SHEET_NAME}!A:V`,
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
       requestBody: {
@@ -197,6 +200,9 @@ export async function adicionarInscrito(params: {
           true,
           false,
           false,
+          '',
+          '',
+          params.lgpdAceiteData || '',
         ]],
       },
     });
@@ -301,5 +307,67 @@ export async function atualizarUltimoRelatorio(
   } catch (erro: any) {
     logger.warn('Inscritos', `Erro ao atualizar último relatório: ${erro?.message || erro}`);
     return { ok: false, erro: erro?.message };
+  }
+}
+
+/**
+ * Abate crédito de indicação (coluna O) do UID até o valor solicitado.
+ * Usado para abater a cobrança de R$5 de itens extras antes de gerar a cobrança final.
+ */
+export async function resgatarCredito(
+  uid: string,
+  valor: number
+): Promise<{ ok: boolean; aplicado: number; restante: number; erro?: string }> {
+  const auth = getAuth();
+  if (!auth) {
+    return { ok: false, aplicado: 0, restante: 0, erro: 'Credenciais não configuradas' };
+  }
+
+  try {
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const colA = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!A:A`,
+      majorDimension: 'COLUMNS',
+      valueRenderOption: 'FORMATTED_VALUE',
+    });
+    const colAValues = colA.data?.values?.[0] || [];
+    let targetRow = -1;
+    for (let i = 1; i < colAValues.length; i++) {
+      if (String(colAValues[i]).trim() === uid) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+
+    if (targetRow < 0) {
+      return { ok: false, aplicado: 0, restante: 0, erro: 'UID não encontrado' };
+    }
+
+    const creditosRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!O${targetRow}`,
+      valueRenderOption: 'FORMATTED_VALUE',
+    });
+    const saldoAtual = Number(String(creditosRes.data?.values?.[0]?.[0] || '0').replace(',', '.')) || 0;
+
+    const aplicado = Math.min(saldoAtual, Math.max(0, valor));
+    const novoSaldo = saldoAtual - aplicado;
+
+    if (aplicado > 0) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SHEET_ID,
+        range: `${SHEET_NAME}!O${targetRow}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [[novoSaldo]] },
+      });
+      logger.info('Inscritos', `Crédito resgatado para UID ${uid}: -${aplicado} (saldo restante: ${novoSaldo})`);
+    }
+
+    return { ok: true, aplicado, restante: novoSaldo };
+  } catch (erro: any) {
+    logger.warn('Inscritos', `Erro ao resgatar crédito: ${erro?.message || erro}`);
+    return { ok: false, aplicado: 0, restante: 0, erro: erro?.message };
   }
 }

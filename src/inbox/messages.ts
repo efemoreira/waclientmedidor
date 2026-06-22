@@ -7,9 +7,17 @@ export const MESSAGES = {
   // Mensagens de boas-vindas e menu
   WELCOME_NEW_USER: `Olá! Bem-vindo ao sistema de monitoramento de consumo.
 
-Vejo que você ainda não está cadastrado. Vamos fazer sua inscrição.
+Vejo que você ainda não está cadastrado. Antes de iniciar seu cadastro, precisamos do seu consentimento para tratar seus dados.
 
-Para começar, me envie seu nome completo.`,
+Usamos seu nome, telefone, bairro, CEP e as leituras de consumo enviadas apenas para prestar este serviço (cálculo de consumo, alertas e relatórios), conforme a LGPD.
+
+Digite SIM para concordar e começar seu cadastro.`,
+
+  LGPD_CONSENTIMENTO_REPETIR: `Para continuar, precisamos do seu consentimento explícito.
+
+Usamos seu nome, telefone, bairro, CEP e leituras de consumo apenas para prestar este serviço.
+
+Digite SIM para concordar e iniciar seu cadastro.`,
 
   WELCOME_REGISTERED_USER: (nome: string) => `Olá, ${nome}!
 
@@ -83,7 +91,8 @@ Imóvel: ${idImovel}
 Tipo: ${MessageHelpers.emojiTipo(tipo)} ${tipo}
 Leitura: ${valor} m³`,
 
-  LEITURA_COM_HISTORICO: (params: {
+  // Mensagem 1/3: confirmação do registro + consumo desde a última leitura + alerta de vazamento
+  MSG_DESDE_ULTIMA: (params: {
     tipo: string;
     idImovel: string;
     data?: string;
@@ -92,58 +101,171 @@ Leitura: ${valor} m³`,
     dias?: number;
     consumo?: string;
     media?: string;
-    consumoDia?: string;
-    mediaDia?: string;
-    consumoSemana?: string;
-    mediaSemana?: string;
-    consumoMes?: string;
-    mediaMes?: string;
+    semHistorico?: boolean;
+    nivelAlerta?: 'atencao' | 'forte';
+    padraoFaixa?: string;
   }) => {
-    let msg = `Leitura registrada.
+    let msg = `✅ Leitura registrada com sucesso
 
-Data: ${params.data || new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
-Imóvel: ${params.idImovel}
-Tipo: ${MessageHelpers.emojiTipo(params.tipo)} ${params.tipo}
-Leitura atual: ${params.leituraAtual} m³`;
+━━━━━━━━━━━
+🏠 Imóvel: ${params.idImovel}
+${MessageHelpers.emojiTipo(params.tipo)} Tipo: ${params.tipo}
+━━━━━━━━━━━
+
+📍 Data: ${params.data || new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })}
+📍 Leitura atual: ${params.leituraAtual} m³`;
+
+    if (params.semHistorico) {
+      msg += `
+
+━━━━━━━━━━━
+📊 Dados anteriores não existentes
+━━━━━━━━━━━
+
+Envie sua próxima leitura em cerca de 30 dias para já ver sua média diária, previsão de conta e alertas.`;
+
+      return msg;
+    }
 
     if (params.leituraAnterior) {
-      msg += `\nÚltimo envio: ${params.leituraAnterior} m³`;
+      msg += `\n📍 Última leitura: ${params.leituraAnterior} m³`;
       if (params.dias) {
-        msg += ` (${params.dias} dia${params.dias !== 1 ? 's' : ''} atrás)`;
+        msg += `\n📅 Último envio: ${params.dias} dia${params.dias !== 1 ? 's' : ''} atrás`;
       }
     }
 
     if (params.consumo) {
-      msg += `\nConsumo desde o último envio: ${params.consumo} m³`;
+      msg += `\n💧 Consumo: ${params.consumo} m³`;
     }
 
     if (params.media) {
-      msg += `\nMédia por dia: ${params.media} m³/dia`;
+      msg += `\n📈 Média diária: ${params.media} m³/dia`;
     }
+
+    if (params.nivelAlerta === 'forte') {
+      msg += `
+
+━━━━━━━━━━━
+🚨 ALERTA DE CONSUMO
+━━━━━━━━━━━
+
+Seu consumo diário está bem acima do seu normal${params.padraoFaixa ? ` (${params.padraoFaixa})` : ''}.
+Possível vazamento — verifique torneiras, registros e descargas.`;
+    } else if (params.nivelAlerta === 'atencao') {
+      msg += `
+
+━━━━━━━━━━━
+⚠️ ATENÇÃO AO CONSUMO
+━━━━━━━━━━━
+
+Seu consumo diário ficou um pouco acima do normal${params.padraoFaixa ? ` (${params.padraoFaixa})` : ''}. Vale a pena dar uma olhada.`;
+    }
+
+    return msg;
+  },
+
+  // Mensagem 2/3: consumo do dia, gráfico semanal e comparação
+  MSG_GASTO_DIA: (params: {
+    tipo: string;
+    consumoDia?: string;
+    mediaDia?: string;
+    graficoSemanal?: string;
+    comparacaoTexto?: string;
+  }) => {
+    let msg = `━━━━━━━━━━━
+📊 GASTO POR DIA
+━━━━━━━━━━━`;
 
     if (params.consumoDia) {
-      msg += `\nHoje: ${params.consumoDia} m³`;
+      msg += `\n💧 Consumo do dia: ${params.consumoDia} m³`;
+    }
+    if (params.mediaDia) {
+      msg += `\n📈 Média diária: ${params.mediaDia} m³/dia`;
     }
 
-    if (params.mediaDia) {
-      msg += `\nMédia de hoje: ${params.mediaDia} m³/dia`;
+    if (params.graficoSemanal) {
+      msg += `
+
+━━━━━━━━━━━
+📈 CONSUMO SEMANAL
+━━━━━━━━━━━
+
+${params.graficoSemanal}`;
     }
+
+    if (params.comparacaoTexto) {
+      msg += `
+
+━━━━━━━━━━━
+📊 COMPARAÇÃO
+━━━━━━━━━━━
+
+${params.comparacaoTexto}`;
+    }
+
+    return msg;
+  },
+
+  // Mensagem 3/3: resumo semanal/mensal, previsão de conta e meta
+  MSG_GASTO_SEMANA_MES: (params: {
+    tipo: string;
+    consumoSemana?: string;
+    mediaSemana?: string;
+    consumoMes?: string;
+    mediaMes?: string;
+    previsaoConta?: string;
+    metaPercentual?: string;
+    metaBarra?: string;
+  }) => {
+    let msg = `━━━━━━━━━━━
+📊 RESUMO SEMANAL
+━━━━━━━━━━━`;
 
     if (params.consumoSemana) {
-      msg += `\nSemana: ${params.consumoSemana} m³`;
+      msg += `\n💧 Consumo semanal: ${params.consumoSemana} m³`;
+    }
+    if (params.mediaSemana) {
+      msg += `\n📈 Média diária: ${params.mediaSemana} m³/dia`;
     }
 
-    if (params.mediaSemana) {
-      msg += `\nMédia semanal: ${params.mediaSemana} m³/dia`;
-    }
+    msg += `
+
+━━━━━━━━━━━
+📅 RESUMO MENSAL
+━━━━━━━━━━━`;
 
     if (params.consumoMes) {
-      msg += `\nMês: ${params.consumoMes} m³`;
+      msg += `\n💧 Consumo mensal: ${params.consumoMes} m³`;
+    }
+    if (params.mediaMes) {
+      msg += `\n📈 Média diária: ${params.mediaMes} m³/dia`;
     }
 
-    if (params.mediaMes) {
-      msg += `\nMédia mensal: ${params.mediaMes} m³/dia`;
+    if (params.metaBarra && params.metaPercentual) {
+      msg += `
+
+━━━━━━━━━━━
+🎯 META DO MÊS
+━━━━━━━━━━━
+
+${params.metaBarra}
+${params.metaPercentual}%`;
     }
+
+    if (params.previsaoConta) {
+      msg += `
+
+━━━━━━━━━━━
+💰 PREVISÃO DA CONTA
+━━━━━━━━━━━
+
+Estimativa:
+${params.previsaoConta}`;
+    }
+
+    msg += `
+
+💡 Dica: programe um lembrete no seu celular para enviar a próxima leitura e manter sua média sempre atualizada.`;
 
     return msg;
   },
@@ -235,24 +357,31 @@ Por favor, tente novamente ou entre em contato com o suporte.`,
   INFO_MINHAS_CASAS: (casas: string) => 
     `Seus imóveis cadastrados\n\n${casas}`,
 
-  INFO_STATUS_MONITORAMENTO: (inscricoes: Array<{
+  INFO_STATUS_DETALHADO: (imoveis: Array<{
     idImovel: string;
     bairro?: string;
-    monitorandoAgua?: boolean;
-    monitorandoEnergia?: boolean;
-    monitorandoGas?: boolean;
+    tipos: Array<{
+      tipo: string;
+      diasUltimaLeitura?: number;
+      consumoMes?: string;
+      previsaoConta?: string;
+    }>;
   }>) => {
-    const linhas = inscricoes.map((i) => {
-      const tipos: string[] = [];
-      if (i.monitorandoAgua) tipos.push('💧 água');
-      if (i.monitorandoEnergia) tipos.push('⚡ energia');
-      if (i.monitorandoGas) tipos.push('🔥 gás');
-      
-      return `${i.idImovel}${i.bairro ? ` - ${i.bairro}` : ''}
-    ${tipos.length > 0 ? tipos.join('\n') : 'Nenhum monitoramento ativo'}`;
+    const blocos = imoveis.map((im) => {
+      const linhasTipos = im.tipos.map((t) => {
+        let linha = `${MessageHelpers.emojiTipo(t.tipo)} ${t.tipo}`;
+        linha += t.diasUltimaLeitura !== undefined
+          ? `\n   Última leitura: há ${t.diasUltimaLeitura} dia${t.diasUltimaLeitura !== 1 ? 's' : ''}`
+          : '\n   Ainda sem leitura registrada';
+        if (t.consumoMes) linha += `\n   Consumo no mês: ${t.consumoMes} m³`;
+        if (t.previsaoConta) linha += `\n   Previsão da conta: ${t.previsaoConta}`;
+        return linha;
+      });
+
+      return `🏠 ${im.idImovel}${im.bairro ? ` - ${im.bairro}` : ''}\n${linhasTipos.join('\n\n') || 'Nenhum monitoramento ativo'}`;
     });
 
-        return `Status de monitoramento\n\n${linhas.join('\n\n')}`;
+    return `Status de monitoramento\n\n${blocos.join('\n\n━━━━━━━━━━━\n\n')}`;
   },
 
   // Indicações
@@ -311,11 +440,29 @@ Ou envie diretamente a leitura, por exemplo: "123" ou "agua 123".`,
 • energia
 • gás`,
 
-  AGUARDANDO_ID_IMOVEL: (casas: string) => 
+  AGUARDANDO_ID_IMOVEL: (casas: string) =>
     `Agora preciso saber qual imóvel.
 
 Informe o ID do imóvel:
 ${casas}`,
+
+  NUDGE_LEITURA_ATRASADA: (idImovel: string, tipo: string, dias: number) =>
+    `📍 Sua última leitura de ${MessageHelpers.emojiTipo(tipo)} ${tipo} (${idImovel}) foi há ${dias} dias. Envie a leitura atual quando puder.`,
+
+  // Cobrança de itens extras (imóvel/tipo adicional) e crédito de indicação
+  CREDITO_APLICADO: (valor: number) =>
+    `🎁 Crédito de indicação aplicado: R$ ${valor.toFixed(2).replace('.', ',')}`,
+
+  COBRANCA_PENDENTE: (valor: number) =>
+    `💳 Cadastro de item extra
+
+Cada imóvel ou tipo de monitoramento adicional ao primeiro tem um custo de R$ ${valor.toFixed(2).replace('.', ',')}.
+
+Seu cadastro ficará pendente até a confirmação do pagamento. Assim que for confirmado, envie qualquer mensagem para concluirmos seu cadastro.`,
+
+  COBRANCA_AINDA_PENDENTE: `Seu pagamento ainda não foi confirmado.
+
+Assim que for confirmado, envie qualquer mensagem para concluirmos seu cadastro.`,
 };
 
 /**

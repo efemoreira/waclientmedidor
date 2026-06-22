@@ -99,20 +99,7 @@ export class CommandHandler {
         description: 'Ver status de monitoramento dos imóveis',
         aliases: ['meu status', 'meus monitoramentos'],
         handler: async (ctx: CommandContext) => {
-          if (!ctx.inscricoes.length) {
-            await ctx.sendMessage(ctx.celular, MESSAGES.ERRO_CADASTRO_NAO_ENCONTRADO);
-            return { handled: true };
-          }
-
-          const info = MESSAGES.INFO_STATUS_MONITORAMENTO(ctx.inscricoes.map((i) => ({
-            idImovel: i.idImovel,
-            bairro: i.bairro,
-            monitorandoAgua: i.monitorandoAgua,
-            monitorandoEnergia: i.monitorandoEnergia,
-            monitorandoGas: i.monitorandoGas,
-          })));
-
-          await ctx.sendMessage(ctx.celular, info);
+          await ctx.gastosManager.responderStatusDetalhado(ctx.celular, ctx.inscricoes);
           return { handled: true };
         },
       },

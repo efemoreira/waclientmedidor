@@ -55,6 +55,20 @@ interface ResumoConsumo {
   mediaMes: number;
 }
 
+export interface ConsumoInsights {
+  semHistorico: boolean;
+  mediaReferenciaDia?: number;
+  faixaNormalMin?: number;
+  faixaNormalMax?: number;
+  alertaVazamento: boolean;
+  nivelAlerta?: 'atencao' | 'forte';
+  graficoSemanal: string;
+  consumoSemanaAtual: number;
+  consumoSemanaAnterior: number;
+  consumoMesAtual: number;
+  comparacaoCondominioPercent?: number;
+}
+
 
 /**
  * Normaliza a chave privada da conta de serviço Google.
@@ -242,6 +256,177 @@ function calcularResumoConsumo(
     consumoMes: mes.consumo,
     mediaMes: mes.media,
   };
+}
+
+function inicioDoDia(data: Date): Date {
+  return new Date(data.getFullYear(), data.getMonth(), data.getDate());
+}
+
+function calcularConsumoNoPeriodoPorSerie(
+  registros: LeituraRow[],
+  inicio: Date,
+  fim: Date
+): number {
+  if (!registros.length) return 0;
+
+  const base = buscarLeituraBasePeriodo(registros, inicio);
+  if (!base) return 0;
+
+  const leituraFim = [...registros]
+    .filter((r) => r.data <= fim)
+    .sort((a, b) => b.data.getTime() - a.data.getTime())[0];
+
+  if (!leituraFim) return 0;
+  return Math.max(0, leituraFim.leituraAtual - base.leituraAtual);
+}
+
+function montarGraficoSemanal(registros: LeituraRow[], agora: Date): string {
+  const inicioSemana = detectarInicioSemana(agora);
+  const hoje = inicioDoDia(agora);
+  const consumosPorDia: number[] = [0, 0, 0, 0, 0, 0, 0]; // 0=dom ... 6=sab
+
+  for (let i = 1; i < registros.length; i++) {
+    const atual = registros[i];
+    const anterior = registros[i - 1];
+    const diaAtual = inicioDoDia(atual.data);
+    if (diaAtual < inicioSemana || diaAtual > hoje) continue;
+    const consumoIntervalo = Math.max(0, atual.leituraAtual - anterior.leituraAtual);
+    consumosPorDia[diaAtual.getDay()] += consumoIntervalo;
+  }
+
+  const ordemSemana = [1, 2, 3, 4, 5, 6, 0]; // seg..dom
+  const labels = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab', 'Dom'];
+  const valores = ordemSemana.map((idx) => consumosPorDia[idx]);
+  const max = Math.max(...valores, 0);
+
+  return labels
+    .map((label, index) => {
+      const valor = valores[index];
+      const blocos = max > 0 ? Math.max(1, Math.round((valor / max) * 8)) : 0;
+      return `${label} ${'█'.repeat(blocos)}`.trim();
+    })
+    .join('\n');
+}
+
+export async function obterInsightsConsumo(
+  idImovel: string,
+  tipo: string,
+): Promise<ConsumoInsights> {
+  const auth = getAuth();
+  if (!auth) {
+    return {
+      semHistorico: true,
+      alertaVazamento: false,
+      graficoSemanal: '',
+      consumoSemanaAtual: 0,
+      consumoSemanaAnterior: 0,
+      consumoMesAtual: 0,
+    };
+  }
+
+  try {
+    const agora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const sheets = google.sheets({ version: 'v4', auth });
+    const { rows } = await lerLeituras(sheets);
+    const registros = ordenarLeiturasPorData(rows, idImovel, tipo);
+
+    if (registros.length < 2) {
+      return {
+        semHistorico: true,
+        alertaVazamento: false,
+        graficoSemanal: '',
+        consumoSemanaAtual: 0,
+        consumoSemanaAnterior: 0,
+        consumoMesAtual: 0,
+      };
+    }
+
+    const intervalos = [] as Array<{ consumo: number; dias: number; mediaDia: number; dataFim: Date }>;
+    for (let i = 1; i < registros.length; i++) {
+      const atual = registros[i];
+      const anterior = registros[i - 1];
+      const consumo = Math.max(0, atual.leituraAtual - anterior.leituraAtual);
+      const dias = Math.max(1, calcularDias(inicioDoDia(atual.data), inicioDoDia(anterior.data)));
+      const mediaDia = calcularMedia(consumo, dias);
+      intervalos.push({ consumo, dias, mediaDia, dataFim: inicioDoDia(atual.data) });
+    }
+
+    const medias = intervalos.map((i) => i.mediaDia).filter((m) => m > 0);
+    const mediaReferenciaDia = medias.length
+      ? medias.reduce((soma, v) => soma + v, 0) / medias.length
+      : 0;
+
+    const ultimo = intervalos[intervalos.length - 1];
+    const penultimo = intervalos.length > 1 ? intervalos[intervalos.length - 2] : undefined;
+    const ultimoAcimaForte = mediaReferenciaDia > 0 && ultimo.mediaDia > mediaReferenciaDia * 1.4;
+    const ultimoAcimaAtencao = mediaReferenciaDia > 0 && ultimo.mediaDia > mediaReferenciaDia * 1.2;
+    const penultimoAcimaForte = !!penultimo && mediaReferenciaDia > 0 && penultimo.mediaDia > mediaReferenciaDia * 1.4;
+
+    // Exige 2 leituras consecutivas acima de 1.4x para declarar alerta forte
+    // (evita falso positivo por erro de digitação numa leitura pontual).
+    let nivelAlerta: 'atencao' | 'forte' | undefined;
+    if (ultimoAcimaForte && penultimoAcimaForte) {
+      nivelAlerta = 'forte';
+    } else if (ultimoAcimaForte || ultimoAcimaAtencao) {
+      nivelAlerta = 'atencao';
+    }
+    const alertaVazamento = nivelAlerta === 'forte';
+    const faixaNormalMin = mediaReferenciaDia > 0 ? mediaReferenciaDia * 0.8 : undefined;
+    const faixaNormalMax = mediaReferenciaDia > 0 ? mediaReferenciaDia * 1.2 : undefined;
+
+    const inicioSemanaAtual = detectarInicioSemana(agora);
+    const fimSemanaAtual = inicioDoDia(agora);
+    const inicioSemanaAnterior = new Date(inicioSemanaAtual);
+    inicioSemanaAnterior.setDate(inicioSemanaAtual.getDate() - 7);
+    const fimSemanaAnterior = new Date(inicioSemanaAtual);
+    fimSemanaAnterior.setDate(inicioSemanaAtual.getDate() - 1);
+    const inicioMes = detectarInicioMes(agora);
+
+    const consumoSemanaAtual = calcularConsumoNoPeriodoPorSerie(registros, inicioSemanaAtual, fimSemanaAtual);
+    const consumoSemanaAnterior = calcularConsumoNoPeriodoPorSerie(registros, inicioSemanaAnterior, fimSemanaAnterior);
+    const consumoMesAtual = calcularConsumoNoPeriodoPorSerie(registros, inicioMes, fimSemanaAtual);
+
+    // Comparação com a média do condomínio (todos os imóveis no mesmo tipo)
+    const ids = Array.from(new Set(rows
+      .filter((r) => r.tipo.toLowerCase() === tipo.toLowerCase())
+      .map((r) => r.id)));
+
+    const consumosMesCondominio = ids
+      .map((id) => calcularConsumoNoPeriodoPorSerie(ordenarLeiturasPorData(rows, id, tipo), inicioMes, fimSemanaAtual))
+      .filter((v) => v > 0);
+
+    const mediaCondominio = consumosMesCondominio.length
+      ? consumosMesCondominio.reduce((soma, v) => soma + v, 0) / consumosMesCondominio.length
+      : 0;
+
+    const comparacaoCondominioPercent = mediaCondominio > 0
+      ? ((consumoMesAtual - mediaCondominio) / mediaCondominio) * 100
+      : undefined;
+
+    return {
+      semHistorico: false,
+      mediaReferenciaDia,
+      faixaNormalMin,
+      faixaNormalMax,
+      alertaVazamento,
+      nivelAlerta,
+      graficoSemanal: montarGraficoSemanal(registros, agora),
+      consumoSemanaAtual,
+      consumoSemanaAnterior,
+      consumoMesAtual,
+      comparacaoCondominioPercent,
+    };
+  } catch (erro: any) {
+    logger.warn('predioSheet', `Erro ao obter insights de consumo: ${erro?.message || erro}`);
+    return {
+      semHistorico: true,
+      alertaVazamento: false,
+      graficoSemanal: '',
+      consumoSemanaAtual: 0,
+      consumoSemanaAnterior: 0,
+      consumoMesAtual: 0,
+    };
+  }
 }
 
 /**

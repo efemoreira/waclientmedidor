@@ -3,8 +3,10 @@
  * Separado da lógica de partido/mensagens genéricas
  */
 
-import { appendPredioEntry, obterUltimaLeitura } from '../utils/predioSheet';
-import { verificarInscrito, adicionarInscrito, listarInscricoesPorCelular, atualizarUltimoRelatorio } from '../utils/inscritosSheet';
+import { appendPredioEntry, obterUltimaLeitura, getWeekOfYear, obterInsightsConsumo } from '../utils/predioSheet';
+import { listarInscricoesPorCelular, atualizarUltimoRelatorio } from '../utils/inscritosSheet';
+import { jaEnviadoRelatorio, registrarRelatorioEnviado } from '../utils/relatoriosSheet';
+import { obterAnuncioPorBairro, registrarImpressao } from '../utils/anunciosSheet';
 import type { WhatsApp } from '../wabapi';
 import { MESSAGES } from './messages';
 import { logger } from '../utils/logger';
@@ -34,6 +36,9 @@ export interface InscritoDados {
 export class GastosManager {
   private client: WhatsApp;
   private _send: (to: string, text: string) => Promise<any>;
+  private tarifaBaseM3: number = Number(process.env.WATER_TARIFA_M3 || '6.5');
+  private metaMensalM3: number = Number(process.env.WATER_META_MENSAL || '20');
+  private diasAtrasoLembrete: number = Number(process.env.LEMBRETE_DIAS_ATRASO || '35');
 
   constructor(client: WhatsApp, sendMessageFn?: (to: string, text: string) => Promise<any>) {
     this.client = client;
@@ -107,6 +112,29 @@ export class GastosManager {
   }
 
   /**
+   * Enviar anúncio hiperlocal (texto ou imagem) como 4ª mensagem, apenas se
+   * houver um anúncio ativo cadastrado para o bairro do imóvel. Caso contrário,
+   * não envia nada além das mensagens de leitura.
+   */
+  private async enviarAnuncioSeHouver(de: string, inscricao: InscritoDados): Promise<void> {
+    if (!inscricao.bairro) return;
+
+    try {
+      const anuncio = await obterAnuncioPorBairro(inscricao.bairro);
+      if (!anuncio) return;
+
+      if (anuncio.tipo === 'imagem' && anuncio.mediaUrl) {
+        await this.client.sendImage(de, anuncio.mediaUrl, anuncio.conteudoTexto);
+      } else {
+        await this._send(de, `📢 Patrocinado\n\n${anuncio.conteudoTexto}`);
+      }
+      await registrarImpressao(anuncio.id);
+    } catch (erro: any) {
+      logger.warn('GastosManager', `Erro ao enviar anúncio para ${de}: ${erro?.message || erro}`);
+    }
+  }
+
+  /**
    * Enviar relatórios periódicos (semanal/mensal) quando devidos e atualizar planilha
    */
   private async enviarRelatoriosPeriodicos(
@@ -117,8 +145,13 @@ export class GastosManager {
     inscricao: InscritoDados
   ): Promise<void> {
     const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+    const agora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const refSemanal = `${agora.getFullYear()}-W${String(getWeekOfYear(agora)).padStart(2, '0')}`;
+    const refMensal = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, '0')}`;
 
-    if (this.precisaRelatorioSemanal(inscricao.ultimoRelatorioSemanal)) {
+    const podeSemanal = this.precisaRelatorioSemanal(inscricao.ultimoRelatorioSemanal);
+    const jaEnviadoSemanal = await jaEnviadoRelatorio(idImovel, 'semanal', refSemanal);
+    if (podeSemanal && !jaEnviadoSemanal) {
       try {
         await this._send(de, MESSAGES.RELATORIO_SEMANAL({
           idImovel,
@@ -127,12 +160,15 @@ export class GastosManager {
           mediaSemana: result.mediaSemana,
         }));
         await atualizarUltimoRelatorio(inscricao.uid, 'semanal', hoje);
+        await registrarRelatorioEnviado(idImovel, 'semanal', refSemanal);
       } catch (erro: any) {
         logger.warn('GastosManager', `Erro ao enviar relatório semanal para ${idImovel}: ${erro?.message || erro}`);
       }
     }
 
-    if (this.precisaRelatorioMensal(inscricao.ultimoRelatorioMensal)) {
+    const podeMensal = this.precisaRelatorioMensal(inscricao.ultimoRelatorioMensal);
+    const jaEnviadoMensal = await jaEnviadoRelatorio(idImovel, 'mensal', refMensal);
+    if (podeMensal && !jaEnviadoMensal) {
       try {
         await this._send(de, MESSAGES.RELATORIO_MENSAL({
           idImovel,
@@ -141,10 +177,91 @@ export class GastosManager {
           mediaMes: result.mediaMes,
         }));
         await atualizarUltimoRelatorio(inscricao.uid, 'mensal', hoje);
+        await registrarRelatorioEnviado(idImovel, 'mensal', refMensal);
       } catch (erro: any) {
         logger.warn('GastosManager', `Erro ao enviar relatório mensal para ${idImovel}: ${erro?.message || erro}`);
       }
     }
+  }
+
+  private formatarMoeda(valor: number): string {
+    return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  }
+
+  private barraMeta(percentual: number): string {
+    const total = 10;
+    const preenchido = Math.max(0, Math.min(total, Math.round((percentual / 100) * total)));
+    return `${'🟩'.repeat(preenchido)}${'⬜'.repeat(total - preenchido)}`;
+  }
+
+  private async montarMensagensLeitura(
+    params: {
+      tipo: 'agua' | 'energia' | 'gas';
+      idImovel: string;
+      data?: string;
+      leituraAtual: string;
+      leituraAnterior?: string;
+      dias?: number;
+      consumo?: string;
+      media?: string;
+      consumoDia?: string;
+      mediaDia?: string;
+      consumoSemana?: string;
+      mediaSemana?: string;
+      consumoMes?: string;
+      mediaMes?: string;
+    }
+  ): Promise<{ msg1: string; msg2: string; msg3: string }> {
+    const insights = await obterInsightsConsumo(params.idImovel, params.tipo);
+    const consumoMes = Number(String(params.consumoMes || '0').replace(',', '.')) || 0;
+    const mediaDia = Number(String(params.mediaDia || params.media || '0').replace(',', '.')) || 0;
+    const agora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const diasNoMes = new Date(agora.getFullYear(), agora.getMonth() + 1, 0).getDate();
+    const previsaoConsumoMes = mediaDia > 0 ? mediaDia * diasNoMes : consumoMes;
+    const previsaoConta = this.formatarMoeda(previsaoConsumoMes * this.tarifaBaseM3);
+
+    const percentualMeta = this.metaMensalM3 > 0
+      ? Math.min(999, (consumoMes / this.metaMensalM3) * 100)
+      : 0;
+    const barraMeta = this.barraMeta(percentualMeta);
+
+    const comparacaoTexto = insights.comparacaoCondominioPercent === undefined
+      ? undefined
+      : insights.comparacaoCondominioPercent <= 0
+        ? `${Math.abs(insights.comparacaoCondominioPercent).toFixed(1)}% menos que a média do condomínio`
+        : `${Math.abs(insights.comparacaoCondominioPercent).toFixed(1)}% acima da média do condomínio`;
+
+    const padraoFaixa = insights.faixaNormalMin && insights.faixaNormalMax
+      ? `${insights.faixaNormalMin.toFixed(2)}-${insights.faixaNormalMax.toFixed(2)} m³/dia`
+      : undefined;
+
+    const msg1 = MESSAGES.MSG_DESDE_ULTIMA({
+      ...params,
+      semHistorico: insights.semHistorico,
+      nivelAlerta: insights.nivelAlerta,
+      padraoFaixa,
+    });
+
+    const msg2 = MESSAGES.MSG_GASTO_DIA({
+      tipo: params.tipo,
+      consumoDia: params.consumoDia,
+      mediaDia: params.mediaDia,
+      graficoSemanal: insights.graficoSemanal,
+      comparacaoTexto,
+    });
+
+    const msg3 = MESSAGES.MSG_GASTO_SEMANA_MES({
+      tipo: params.tipo,
+      consumoSemana: params.consumoSemana,
+      mediaSemana: params.mediaSemana,
+      consumoMes: params.consumoMes,
+      mediaMes: params.mediaMes,
+      previsaoConta,
+      metaPercentual: percentualMeta.toFixed(0),
+      metaBarra: barraMeta,
+    });
+
+    return { msg1, msg2, msg3 };
   }
 
   /**
@@ -196,6 +313,60 @@ export class GastosManager {
   }
 
   /**
+   * Responder comando "Status" com dias desde a última leitura, consumo do
+   * mês até agora e previsão de conta por tipo monitorado — dá ao usuário um
+   * motivo concreto para abrir a conversa entre leituras.
+   */
+  async responderStatusDetalhado(de: string, inscricoes: InscritoDados[]): Promise<void> {
+    if (!inscricoes.length) {
+      await this._send(de, MESSAGES.ERRO_CADASTRO_NAO_ENCONTRADO);
+      return;
+    }
+
+    const tiposPossiveis: Array<'agua' | 'energia' | 'gas'> = ['agua', 'energia', 'gas'];
+    const agora = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const diasNoMes = new Date(agora.getFullYear(), agora.getMonth() + 1, 0).getDate();
+
+    const imoveis = await Promise.all(
+      inscricoes.map(async (inscricao) => {
+        const tiposAtivos = tiposPossiveis.filter((tipo) => {
+          if (tipo === 'agua') return inscricao.monitorandoAgua;
+          if (tipo === 'energia') return inscricao.monitorandoEnergia;
+          return inscricao.monitorandoGas;
+        });
+
+        const tipos = await Promise.all(
+          tiposAtivos.map(async (tipo) => {
+            const [ultima, insights] = await Promise.all([
+              obterUltimaLeitura(inscricao.idImovel),
+              obterInsightsConsumo(inscricao.idImovel, tipo),
+            ]);
+
+            const dataUltima = ultima.data ? this.parseDateBR(ultima.data) : null;
+            const diasUltimaLeitura = dataUltima
+              ? Math.max(0, Math.round((Date.now() - dataUltima.getTime()) / (1000 * 60 * 60 * 24)))
+              : undefined;
+
+            const consumoMes = insights.consumoMesAtual > 0 ? insights.consumoMesAtual.toFixed(2) : undefined;
+            const previsaoConsumoMes = insights.mediaReferenciaDia
+              ? insights.mediaReferenciaDia * diasNoMes
+              : insights.consumoMesAtual;
+            const previsaoConta = previsaoConsumoMes > 0
+              ? this.formatarMoeda(previsaoConsumoMes * this.tarifaBaseM3)
+              : undefined;
+
+            return { tipo, diasUltimaLeitura, consumoMes, previsaoConta };
+          })
+        );
+
+        return { idImovel: inscricao.idImovel, bairro: inscricao.bairro, tipos };
+      })
+    );
+
+    await this._send(de, MESSAGES.INFO_STATUS_DETALHADO(imoveis));
+  }
+
+  /**
    * Responder comando "Como indicar"
    */
   async responderComoIndicar(de: string, inscricoes: InscritoDados[]): Promise<void> {
@@ -205,6 +376,37 @@ export class GastosManager {
     }
     const uids = inscricoes.map((i) => i.uid);
     await this._send(de, MESSAGES.INFO_COMO_INDICAR(uids));
+  }
+
+  /**
+   * Como o bot só responde mensagens recebidas, este nudge é aproveitado
+   * dentro de uma resposta que já seria enviada de qualquer forma (comando,
+   * menu, etc.) — nunca como mensagem proativa. Retorna o imóvel/tipo com a
+   * leitura mais atrasada (acima de `diasAtrasoLembrete` dias), ou null.
+   */
+  async obterNudgeAtraso(inscricoes: InscritoDados[]): Promise<string | null> {
+    let maisAtrasado: { idImovel: string; tipo: string; dias: number } | null = null;
+
+    for (const inscricao of inscricoes) {
+      const tipos: Array<'agua' | 'energia' | 'gas'> = [];
+      if (inscricao.monitorandoAgua) tipos.push('agua');
+      if (inscricao.monitorandoEnergia) tipos.push('energia');
+      if (inscricao.monitorandoGas) tipos.push('gas');
+      if (!tipos.length) continue;
+
+      const ultima = await obterUltimaLeitura(inscricao.idImovel);
+      if (!ultima.data) continue;
+      const data = this.parseDateBR(ultima.data);
+      if (!data) continue;
+
+      const dias = Math.round((Date.now() - data.getTime()) / (1000 * 60 * 60 * 24));
+      if (dias >= this.diasAtrasoLembrete && (!maisAtrasado || dias > maisAtrasado.dias)) {
+        maisAtrasado = { idImovel: inscricao.idImovel, tipo: tipos[0], dias };
+      }
+    }
+
+    if (!maisAtrasado) return null;
+    return MESSAGES.NUDGE_LEITURA_ATRASADA(maisAtrasado.idImovel, maisAtrasado.tipo, maisAtrasado.dias);
   }
 
   /**
@@ -280,8 +482,8 @@ export class GastosManager {
 
     if (result.ok) {
       const leituraAtual = pending.valor || leituraValor;
-      
-      const reply = MESSAGES.LEITURA_COM_HISTORICO({
+
+      const { msg1, msg2, msg3 } = await this.montarMensagensLeitura({
         tipo: pending.tipo,
         idImovel: pending.idImovel,
         data: result.data,
@@ -297,11 +499,14 @@ export class GastosManager {
         consumoMes: result.consumoMes,
         mediaMes: result.mediaMes,
       });
-      
-      await this._send(de, reply);
+
+      await this._send(de, msg1);
+      await this._send(de, msg2);
+      await this._send(de, msg3);
 
       const inscricao = inscricoes.find(i => i.idImovel === pending.idImovel);
       if (inscricao) {
+        await this.enviarAnuncioSeHouver(de, inscricao);
         await this.enviarRelatoriosPeriodicos(de, pending.idImovel, pending.tipo, result, inscricao);
       }
     } else {
@@ -424,7 +629,7 @@ export class GastosManager {
     });
 
     if (result.ok) {
-      const reply = MESSAGES.LEITURA_COM_HISTORICO({
+      const { msg1, msg2, msg3 } = await this.montarMensagensLeitura({
         tipo: leituraTipo,
         idImovel,
         data: result.data,
@@ -440,11 +645,14 @@ export class GastosManager {
         consumoMes: result.consumoMes,
         mediaMes: result.mediaMes,
       });
-      
-      await this._send(de, reply);
+
+      await this._send(de, msg1);
+      await this._send(de, msg2);
+      await this._send(de, msg3);
 
       const inscricao = inscricoes.find(i => i.idImovel === idImovel);
       if (inscricao) {
+        await this.enviarAnuncioSeHouver(de, inscricao);
         await this.enviarRelatoriosPeriodicos(de, idImovel, leituraTipo, result, inscricao);
       }
     } else {

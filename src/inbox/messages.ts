@@ -5,91 +5,93 @@
 
 export const MESSAGES = {
   // Mensagens de boas-vindas e menu
-  WELCOME_NEW_USER: `Olá! Bem-vindo ao sistema de monitoramento de consumo.
+  WELCOME_NEW_USER: [
+    `👋 Olá! Bem-vindo ao sistema de monitoramento de consumo.
 
-Vejo que você ainda não está cadastrado. Antes de iniciar seu cadastro, precisamos do seu consentimento para tratar seus dados.
+Vejo que você ainda não está cadastrado.`,
+    `🔒 Antes de iniciar seu cadastro, precisamos do seu consentimento para tratar seus dados, conforme a LGPD.
 
-Usamos seu nome, telefone, bairro, CEP e as leituras de consumo enviadas apenas para prestar este serviço (cálculo de consumo, alertas e relatórios), conforme a LGPD.
+Usamos seu nome, telefone, bairro, CEP e as leituras de consumo enviadas apenas para prestar este serviço (cálculo de consumo, alertas e relatórios).`,
+    `✅ Digite *SIM* para concordar e começar seu cadastro.`,
+  ],
 
-Digite SIM para concordar e começar seu cadastro.`,
-
-  LGPD_CONSENTIMENTO_REPETIR: `Para continuar, precisamos do seu consentimento explícito.
+  LGPD_CONSENTIMENTO_REPETIR: `🔒 Para continuar, precisamos do seu consentimento explícito.
 
 Usamos seu nome, telefone, bairro, CEP e leituras de consumo apenas para prestar este serviço.
 
-Digite SIM para concordar e iniciar seu cadastro.`,
+Digite *SIM* para concordar e iniciar seu cadastro.`,
 
-  WELCOME_REGISTERED_USER: (nome: string) => `Olá, ${nome}!
+  WELCOME_REGISTERED_USER: (nome: string) => `👋 Olá, ${nome}!
 
 É um prazer te ver por aqui.`,
 
-  MENU_PRINCIPAL: `Menu de opções
+  MENU_PRINCIPAL: `📋 Menu de opções
 
 Você pode usar os seguintes comandos:
 
-Consultas
+🔎 Consultas
 • *Meu UID* - Ver seus identificadores
 • *Minhas casas* - Listar seus imóveis
 • *Status* - Ver status de monitoramento
 
-Ações
+⚡ Ações
 • *Enviar leitura* - Registrar consumo (ex: "123" ou "agua 123")
 • *Adicionar casa* - Cadastrar um novo imóvel
 • *Ajuda* - Ver este menu novamente
 
-Indicações
+🎁 Indicações
 • *Como indicar* - Saiba como indicar amigos
 
 Você também pode enviar sua leitura diretamente (ex: "456" ou "energia 456").`,
 
   // Mensagens de ajuda
-  HELP_ENVIAR_LEITURA: `Como enviar leituras
+  HELP_ENVIAR_LEITURA: `💧 Como enviar leituras
 
 Você pode enviar de várias formas:
 
-1. Apenas o número
+1️⃣ Apenas o número
    Exemplo: 123
    (Útil se você só monitora um tipo)
 
-2. Tipo + número
-   Exemplos: 
+2️⃣ Tipo + número
+   Exemplos:
    • agua 123
    • energia 456
    • gas 789
 
-3. ID do imóvel + tipo + número
+3️⃣ ID do imóvel + tipo + número
    Exemplo: IMV001 agua 123
    (Se você tem vários imóveis)
 
-4. ID do imóvel + número
+4️⃣ ID do imóvel + número
    Exemplo: IMV001 123
    (Sistema detecta o tipo automaticamente)`,
 
-  HELP_COMMANDS: `Comandos disponíveis
+  HELP_COMMANDS: `📋 Comandos disponíveis
 
-Consultas
+🔎 Consultas
 • meu uid / uid
 • minhas casas / casas / imoveis
 • status / monitoramento
 • ultima leitura
 
-Ações
+⚡ Ações
 • adicionar casa / nova casa
 • enviar leitura
 
-Suporte
+🆘 Suporte
 • ajuda / help / menu
 • como indicar
 
 Você pode digitar os comandos em letras maiúsculas ou minúsculas!`,
 
   // Mensagens de confirmação
-  LEITURA_REGISTRADA: (tipo: string, idImovel: string, valor: string) => 
-    `Leitura registrada com sucesso.
+  LEITURA_REGISTRADA: (tipo: string, idImovel: string, valor: string) =>
+    `✅ Leitura registrada com sucesso.
 
-Imóvel: ${idImovel}
-Tipo: ${MessageHelpers.emojiTipo(tipo)} ${tipo}
-Leitura: ${valor} m³`,
+🏠 Imóvel: ${idImovel}
+${MessageHelpers.emojiTipo(tipo)} Tipo: ${tipo}
+📍 Leitura: ${valor} m³`,
 
   // Mensagem 1/3: confirmação do registro + consumo desde a última leitura + alerta de vazamento
   MSG_DESDE_ULTIMA: (params: {
@@ -271,91 +273,90 @@ ${params.previsaoConta}`;
   },
 
   // Mensagens de inscrição
-  INSCRICAO_NOME: `Vamos começar seu cadastro.
+  INSCRICAO_NOME: `📝 Vamos começar seu cadastro.
 
 Por favor, me envie seu nome completo.`,
 
-  INSCRICAO_BAIRRO: `Perfeito.
+  INSCRICAO_BAIRRO: `📍 Perfeito.
 
 Agora me diga qual é o seu bairro.`,
 
-  INSCRICAO_CEP: `Ótimo.
+  INSCRICAO_CEP: `📮 Ótimo.
 
 Qual é o CEP do seu imóvel?`,
 
-  INSCRICAO_TIPO_IMOVEL: `Entendi.
+  INSCRICAO_TIPO_IMOVEL: `🏠 Entendi.
 
 Qual é o tipo de imóvel?
 (Exemplos: casa, apartamento, comercial, etc.)`,
 
-  INSCRICAO_PESSOAS: `Legal.
+  INSCRICAO_PESSOAS: `👥 Legal.
 
 Quantas pessoas moram no imóvel?`,
 
-  INSCRICAO_UID_INDICADOR: `Quase lá.
+  INSCRICAO_UID_INDICADOR: `🎁 Quase lá.
 
 Você tem um UID de indicador?
-Se sim, informe agora. 
+Se sim, informe agora.
 Se não, pode responder "não" ou "nao".`,
 
-  INSCRICAO_SUCESSO: (nome: string, uid: string, idImovel: string) => 
-    `Inscrição realizada com sucesso.
+  INSCRICAO_SUCESSO: (nome: string, uid: string, idImovel: string) => [
+    `✅ Inscrição realizada com sucesso!
 
-Bem-vindo(a), ${nome}!
-
-Seus dados:
+🎉 Bem-vindo(a), ${nome}!`,
+    `📋 Seus dados:
 UID: ${uid}
-ID do imóvel: ${idImovel}
+ID do imóvel: ${idImovel}`,
+    `🚀 Agora você pode começar a enviar suas leituras.
 
-Agora você pode começar a enviar suas leituras.
+Digite *ajuda* para ver todas as opções disponíveis.`,
+  ],
 
-Digite ajuda para ver todas as opções disponíveis.`,
-
-  INSCRICAO_ERRO: (erro?: string) => 
-    `Ocorreu um erro durante a inscrição.
+  INSCRICAO_ERRO: (erro?: string) =>
+    `❌ Ocorreu um erro durante a inscrição.
 ${erro ? `\nDetalhes: ${erro}` : ''}
 
 Por favor, tente responder a última pergunta novamente.`,
 
   // Mensagens de erro e validação
-  ERRO_IMOVEL_NAO_ENCONTRADO: (inscricoes: string[]) => 
-    `ID do imóvel não encontrado.
+  ERRO_IMOVEL_NAO_ENCONTRADO: (inscricoes: string[]) =>
+    `❌ ID do imóvel não encontrado.
 
 Escolha um dos seus imóveis:
 ${inscricoes.join('\n')}`,
 
-  ERRO_PRECISA_ID: `Você tem mais de um imóvel cadastrado.
+  ERRO_PRECISA_ID: `🏠 Você tem mais de um imóvel cadastrado.
 
 Informe o ID do imóvel junto com a leitura.
 
 Exemplo: IMV001 123`,
 
-  ERRO_PRECISA_TIPO: `Especifique o tipo de monitoramento.
+  ERRO_PRECISA_TIPO: `❓ Especifique o tipo de monitoramento.
 
 Opções disponíveis:
-• água
-• energia  
-• gás
+• 💧 água
+• ⚡ energia
+• 🔥 gás
 
 Exemplo: agua 123`,
 
-  ERRO_CADASTRO_NAO_ENCONTRADO: `Não encontrei seu cadastro no sistema.
+  ERRO_CADASTRO_NAO_ENCONTRADO: `❌ Não encontrei seu cadastro no sistema.
 
 Entre em contato com o suporte para mais informações.`,
 
-  ERRO_LEITURA_REGISTRO: (erro?: string) => 
-    `Não foi possível registrar a leitura.${erro ? `\n\nDetalhes: ${erro}` : ''}
+  ERRO_LEITURA_REGISTRO: (erro?: string) =>
+    `❌ Não foi possível registrar a leitura.${erro ? `\n\nDetalhes: ${erro}` : ''}
 
 Por favor, tente novamente ou entre em contato com o suporte.`,
 
   // Informações de UID e imóveis
   INFO_MEUS_UIDS: (uids: Array<{ uid: string; idImovel: string }>) => {
     const linhas = uids.map((i) => `UID: ${i.uid}\nImóvel: ${i.idImovel}`);
-    return `Seus dados cadastrais\n\n${linhas.join('\n\n')}`;
+    return `📋 Seus dados cadastrais\n\n${linhas.join('\n\n')}`;
   },
 
-  INFO_MINHAS_CASAS: (casas: string) => 
-    `Seus imóveis cadastrados\n\n${casas}`,
+  INFO_MINHAS_CASAS: (casas: string) =>
+    `🏠 Seus imóveis cadastrados\n\n${casas}`,
 
   INFO_STATUS_DETALHADO: (imoveis: Array<{
     idImovel: string;
@@ -381,13 +382,13 @@ Por favor, tente novamente ou entre em contato com o suporte.`,
       return `🏠 ${im.idImovel}${im.bairro ? ` - ${im.bairro}` : ''}\n${linhasTipos.join('\n\n') || 'Nenhum monitoramento ativo'}`;
     });
 
-    return `Status de monitoramento\n\n${blocos.join('\n\n━━━━━━━━━━━\n\n')}`;
+    return `📊 Status de monitoramento\n\n${blocos.join('\n\n━━━━━━━━━━━\n\n')}`;
   },
 
   // Indicações
   INFO_COMO_INDICAR: (uids: string[]) => {
     const uidList = uids.map((uid) => `• ${uid}`).join('\n');
-    return `Como indicar amigos
+    return `🎁 Como indicar amigos
 
 Compartilhe seu UID com amigos que queiram se cadastrar!
 
@@ -406,12 +407,12 @@ Você ganha benefícios a cada indicação!`;
     consumoSemana?: string;
     mediaSemana?: string;
   }) =>
-    `Relatório semanal
+    `📅 Relatório semanal
 
-Imóvel: ${params.idImovel}
-Tipo: ${MessageHelpers.emojiTipo(params.tipo)} ${params.tipo}
-Consumo na semana: ${params.consumoSemana || 'Sem dados'} m³
-Média diária: ${params.mediaSemana || 'Sem dados'} m³/dia`,
+🏠 Imóvel: ${params.idImovel}
+${MessageHelpers.emojiTipo(params.tipo)} Tipo: ${params.tipo}
+💧 Consumo na semana: ${params.consumoSemana || 'Sem dados'} m³
+📈 Média diária: ${params.mediaSemana || 'Sem dados'} m³/dia`,
 
   RELATORIO_MENSAL: (params: {
     idImovel: string;
@@ -419,29 +420,29 @@ Média diária: ${params.mediaSemana || 'Sem dados'} m³/dia`,
     consumoMes?: string;
     mediaMes?: string;
   }) =>
-    `Relatório mensal
+    `📅 Relatório mensal
 
-Imóvel: ${params.idImovel}
-Tipo: ${MessageHelpers.emojiTipo(params.tipo)} ${params.tipo}
-Consumo no mês: ${params.consumoMes || 'Sem dados'} m³
-Média diária: ${params.mediaMes || 'Sem dados'} m³/dia`,
+🏠 Imóvel: ${params.idImovel}
+${MessageHelpers.emojiTipo(params.tipo)} Tipo: ${params.tipo}
+💧 Consumo no mês: ${params.consumoMes || 'Sem dados'} m³
+📈 Média diária: ${params.mediaMes || 'Sem dados'} m³/dia`,
 
   // Comandos não reconhecidos
-  COMANDO_NAO_RECONHECIDO: `Não reconheci esse comando.
+  COMANDO_NAO_RECONHECIDO: `❓ Não reconheci esse comando.
 
-Envie ajuda ou menu.
+Envie *ajuda* ou *menu*.
 
 Ou envie diretamente a leitura, por exemplo: "123" ou "agua 123".`,
 
   // Mensagens de contexto
-  AGUARDANDO_TIPO: `Agora me diga o tipo de monitoramento:
+  AGUARDANDO_TIPO: `❓ Agora me diga o tipo de monitoramento:
 
-• água
-• energia
-• gás`,
+• 💧 água
+• ⚡ energia
+• 🔥 gás`,
 
   AGUARDANDO_ID_IMOVEL: (casas: string) =>
-    `Agora preciso saber qual imóvel.
+    `🏠 Agora preciso saber qual imóvel.
 
 Informe o ID do imóvel:
 ${casas}`,
@@ -460,7 +461,7 @@ Cada imóvel ou tipo de monitoramento adicional ao primeiro tem um custo de R$ $
 
 Seu cadastro ficará pendente até a confirmação do pagamento. Assim que for confirmado, envie qualquer mensagem para concluirmos seu cadastro.`,
 
-  COBRANCA_AINDA_PENDENTE: `Seu pagamento ainda não foi confirmado.
+  COBRANCA_AINDA_PENDENTE: `⏳ Seu pagamento ainda não foi confirmado.
 
 Assim que for confirmado, envie qualquer mensagem para concluirmos seu cadastro.`,
 };

@@ -57,7 +57,9 @@ export async function verificarInscrito(celular: string): Promise<{
   }
 
   try {
-    const inscricoes = await listarInscricoesPorCelular(celular);
+    // Usa a busca "crua" (sem engolir erro) para não confundir falha da API
+    // com "celular não cadastrado" - ver buscarInscricoesPorCelular.
+    const inscricoes = await buscarInscricoesPorCelular(auth, celular);
     if (inscricoes.length > 0) {
       logger.info('Inscritos', `✅ Celular ${celular} encontrado: ${inscricoes[0].nome} (${inscricoes[0].uid})`);
       return { inscrito: true, uid: inscricoes[0].uid, nome: inscricoes[0].nome };
@@ -85,8 +87,49 @@ export type InscricaoInfo = {
 };
 
 /**
+ * Busca na planilha as inscrições (imóveis) de um celular. Propaga erros da
+ * API do Sheets em vez de engoli-los - quem precisa diferenciar "celular não
+ * cadastrado" de "falha ao consultar a planilha" deve chamar esta função.
+ */
+async function buscarInscricoesPorCelular(auth: NonNullable<ReturnType<typeof getAuth>>, celular: string): Promise<InscricaoInfo[]> {
+  const sheets = google.sheets({ version: 'v4', auth });
+  const result = await sheets.spreadsheets.values.get({
+    spreadsheetId: SHEET_ID,
+    range: `${SHEET_NAME}!A:V`,
+    majorDimension: 'ROWS',
+    valueRenderOption: 'FORMATTED_VALUE',
+  });
+
+  const rows = result.data?.values || [];
+  const celularNormalizado = celular.replace(/\D/g, '');
+  const inscritos: InscricaoInfo[] = [];
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const cel = String(row[3] || '').replace(/\D/g, '');
+    if (cel !== celularNormalizado) continue;
+
+    inscritos.push({
+      uid: String(row[0] || ''),
+      idImovel: String(row[1] || ''),
+      nome: String(row[2] || ''),
+      celular: String(row[3] || ''),
+      bairro: String(row[6] || ''),
+      monitorandoAgua: String(row[16] || '').toLowerCase() === 'true',
+      monitorandoEnergia: String(row[17] || '').toLowerCase() === 'true',
+      monitorandoGas: String(row[18] || '').toLowerCase() === 'true',
+      ultimoRelatorioSemanal: String(row[19] || ''),
+      ultimoRelatorioMensal: String(row[20] || ''),
+    });
+  }
+
+  return inscritos;
+}
+
+/**
  * Lista todas as inscrições (imóveis) associadas a um número de celular.
  * Busca na planilha Google Sheets e retorna um array com os dados de cada inscrição.
+ * Em caso de erro na API, retorna [] (uso "best-effort" para exibição de dados).
  * @param celular - Número de celular do usuário (com ou sem formatação)
  */
 export async function listarInscricoesPorCelular(celular: string): Promise<InscricaoInfo[]> {
@@ -97,38 +140,7 @@ export async function listarInscricoesPorCelular(celular: string): Promise<Inscr
   }
 
   try {
-    const sheets = google.sheets({ version: 'v4', auth });
-    const result = await sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A:V`,
-      majorDimension: 'ROWS',
-      valueRenderOption: 'FORMATTED_VALUE',
-    });
-
-    const rows = result.data?.values || [];
-    const celularNormalizado = celular.replace(/\D/g, '');
-    const inscritos: InscricaoInfo[] = [];
-
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i] || [];
-      const cel = String(row[3] || '').replace(/\D/g, '');
-      if (cel !== celularNormalizado) continue;
-
-      inscritos.push({
-        uid: String(row[0] || ''),
-        idImovel: String(row[1] || ''),
-        nome: String(row[2] || ''),
-        celular: String(row[3] || ''),
-        bairro: String(row[6] || ''),
-        monitorandoAgua: String(row[16] || '').toLowerCase() === 'true',
-        monitorandoEnergia: String(row[17] || '').toLowerCase() === 'true',
-        monitorandoGas: String(row[18] || '').toLowerCase() === 'true',
-        ultimoRelatorioSemanal: String(row[19] || ''),
-        ultimoRelatorioMensal: String(row[20] || ''),
-      });
-    }
-
-    return inscritos;
+    return await buscarInscricoesPorCelular(auth, celular);
   } catch (erro: any) {
     logger.warn('Inscritos', `Erro ao listar inscritos: ${erro?.message || erro}`);
     return [];

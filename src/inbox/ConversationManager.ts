@@ -564,12 +564,14 @@ export class ConversationManager {
                       conversa.inscricaoStage = undefined;
                       conversa.inscricaoData = undefined;
                       await this.persistirConversas();
-                      const reply = MESSAGES.INSCRICAO_SUCESSO(
+                      const partes = MESSAGES.INSCRICAO_SUCESSO(
                         dados?.nome || '',
                         resultado.uid || '',
                         resultado.idImovel || ''
                       );
-                      await this.enviarMensagem(de, reply);
+                      for (const parte of partes) {
+                        await this.enviarMensagem(de, parte);
+                      }
                     } else {
                       await this.enviarMensagem(de, MESSAGES.INSCRICAO_ERRO(resultado.erro));
                     }
@@ -596,9 +598,10 @@ export class ConversationManager {
               conversa.inscricaoStage = 'consentimento';
               conversa.inscricaoData = {};
               await this.persistirConversas();
-              const reply = MESSAGES.WELCOME_NEW_USER;
               try {
-                await this.enviarMensagem(de, reply);
+                for (const parte of MESSAGES.WELCOME_NEW_USER) {
+                  await this.enviarMensagem(de, parte);
+                }
               } catch (erro: any) {
                 this.log(`❌ Falha ao enviar solicitação de inscrição: ${erro?.message || erro}`);
               }

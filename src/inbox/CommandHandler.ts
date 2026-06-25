@@ -8,6 +8,11 @@ import { MESSAGES } from './messages';
 import { GastosManager } from './GastosManager';
 import type { InscritoDados } from './GastosManager';
 import { logger } from '../utils/logger';
+import { listarElegiveisLembrete } from '../utils/inscritosSheet';
+
+// Número autorizado a disparar o gatilho de retorno (comando "lembrar").
+const ADMIN_PHONE_LEMBRAR = '558597223863';
+const DELAY_ENTRE_LEMBRETES_MS = 1500;
 
 export interface CommandContext {
   celular: string;
@@ -120,6 +125,26 @@ export class CommandHandler {
         aliases: ['todos comandos', 'opcoes'],
         handler: async (ctx: CommandContext) => {
           await ctx.sendMessage(ctx.celular, MESSAGES.HELP_COMMANDS);
+          return { handled: true };
+        },
+      },
+      // Comando admin: gatilho de retorno (reabre a janela de 24h de quem
+      // interagiu ontem antes das 22h). Restrito a um número autorizado.
+      {
+        names: ['lembrar'],
+        description: 'Disparar mensagem-gatilho de retorno (admin)',
+        handler: async (ctx: CommandContext) => {
+          if (ctx.celular.replace(/\D/g, '') !== ADMIN_PHONE_LEMBRAR) {
+            return { handled: false };
+          }
+
+          const elegiveis = await listarElegiveisLembrete();
+          for (const { celular, nome } of elegiveis) {
+            await ctx.sendMessage(celular, MESSAGES.LEMBRETE_RETORNO(nome));
+            await new Promise((resolve) => setTimeout(resolve, DELAY_ENTRE_LEMBRETES_MS));
+          }
+
+          await ctx.sendMessage(ctx.celular, `✅ Lembrete enviado para ${elegiveis.length} contato(s).`);
           return { handled: true };
         },
       },

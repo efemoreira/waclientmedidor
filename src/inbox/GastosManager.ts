@@ -4,7 +4,7 @@
  */
 
 import { appendPredioEntry, obterUltimaLeitura, getWeekOfYear, obterInsightsConsumo } from '../utils/predioSheet';
-import { listarInscricoesPorCelular, atualizarUltimoRelatorio } from '../utils/inscritosSheet';
+import { listarInscricoesPorCelular, atualizarUltimoRelatorio, atualizarUltimaLeitura } from '../utils/inscritosSheet';
 import { jaEnviadoRelatorio, registrarRelatorioEnviado } from '../utils/relatoriosSheet';
 import { obterAnuncioPorBairro, registrarImpressao } from '../utils/anunciosSheet';
 import type { WhatsApp } from '../wabapi';
@@ -506,6 +506,7 @@ export class GastosManager {
 
       const inscricao = inscricoes.find(i => i.idImovel === pending.idImovel);
       if (inscricao) {
+        await atualizarUltimaLeitura(inscricao.uid, new Date().toISOString());
         await this.enviarAnuncioSeHouver(de, inscricao);
         await this.enviarRelatoriosPeriodicos(de, pending.idImovel, pending.tipo, result, inscricao);
       }
@@ -652,6 +653,7 @@ export class GastosManager {
 
       const inscricao = inscricoes.find(i => i.idImovel === idImovel);
       if (inscricao) {
+        await atualizarUltimaLeitura(inscricao.uid, new Date().toISOString());
         await this.enviarAnuncioSeHouver(de, inscricao);
         await this.enviarRelatoriosPeriodicos(de, idImovel, leituraTipo, result, inscricao);
       }

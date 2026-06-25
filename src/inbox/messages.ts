@@ -450,6 +450,9 @@ ${casas}`,
   NUDGE_LEITURA_ATRASADA: (idImovel: string, tipo: string, dias: number) =>
     `📍 Sua última leitura de ${MessageHelpers.emojiTipo(tipo)} ${tipo} (${idImovel}) foi há ${dias} dias. Envie a leitura atual quando puder.`,
 
+  LEMBRETE_RETORNO: (nome: string) =>
+    `👋 Olá${nome ? `, ${nome}` : ''}! Passando para saber se você precisa de alguma ajuda com o monitoramento do seu consumo. Qualquer dúvida, é só responder aqui.`,
+
   // Cobrança de itens extras (imóvel/tipo adicional) e crédito de indicação
   CREDITO_APLICADO: (valor: number) =>
     `🎁 Crédito de indicação aplicado: R$ ${valor.toFixed(2).replace('.', ',')}`,

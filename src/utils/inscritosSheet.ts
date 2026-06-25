@@ -334,6 +334,116 @@ export async function atualizarUltimoRelatorio(
 }
 
 /**
+ * Atualiza o timestamp da última leitura enviada (coluna W) de um inscrito pelo UID.
+ * Usado para detectar quem está na janela de 24h de mensagens do WhatsApp.
+ */
+export async function atualizarUltimaLeitura(
+  uid: string,
+  timestampIso: string
+): Promise<{ ok: boolean; erro?: string }> {
+  const auth = getAuth();
+  if (!auth) {
+    logger.warn('Inscritos', 'Credenciais não configuradas');
+    return { ok: false, erro: 'Credenciais não configuradas' };
+  }
+
+  try {
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    const colA = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!A:A`,
+      majorDimension: 'COLUMNS',
+      valueRenderOption: 'FORMATTED_VALUE',
+    });
+    const colAValues = colA.data?.values?.[0] || [];
+    let targetRow = -1;
+    for (let i = 1; i < colAValues.length; i++) {
+      if (String(colAValues[i]).trim() === uid) {
+        targetRow = i + 1;
+        break;
+      }
+    }
+
+    if (targetRow < 0) {
+      logger.warn('Inscritos', `UID não encontrado para atualizar última leitura: ${uid}`);
+      return { ok: false, erro: 'UID não encontrado' };
+    }
+
+    // W = Ultima_Leitura (index 22), timestamp ISO em UTC
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!W${targetRow}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[timestampIso]] },
+    });
+
+    return { ok: true };
+  } catch (erro: any) {
+    logger.warn('Inscritos', `Erro ao atualizar última leitura: ${erro?.message || erro}`);
+    return { ok: false, erro: erro?.message };
+  }
+}
+
+/**
+ * Lista os celulares elegíveis para receber a mensagem-gatilho de retorno:
+ * última leitura enviada no dia anterior (fuso America/Sao_Paulo) e antes das 22h.
+ * Deduplica por celular, já que um celular pode ter mais de um imóvel/UID.
+ */
+export async function listarElegiveisLembrete(): Promise<{ celular: string; nome: string }[]> {
+  const auth = getAuth();
+  if (!auth) {
+    logger.warn('Inscritos', 'Credenciais não configuradas');
+    return [];
+  }
+
+  const TZ = 'America/Sao_Paulo';
+  const HORA_LIMITE = 22;
+
+  try {
+    const sheets = google.sheets({ version: 'v4', auth });
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!A:W`,
+      majorDimension: 'ROWS',
+      valueRenderOption: 'FORMATTED_VALUE',
+    });
+    const rows = result.data?.values || [];
+
+    const agora = new Date();
+    const ontem = new Date(agora.getTime() - 24 * 60 * 60 * 1000);
+    const ontemStr = ontem.toLocaleDateString('pt-BR', { timeZone: TZ });
+
+    const elegiveis = new Map<string, string>();
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i] || [];
+      const celular = String(row[3] || '').replace(/\D/g, '');
+      const nome = String(row[2] || '');
+      const ultimaLeitura = String(row[22] || '').trim();
+      if (!celular || !ultimaLeitura || elegiveis.has(celular)) continue;
+
+      const dataLeitura = new Date(ultimaLeitura);
+      if (Number.isNaN(dataLeitura.getTime())) continue;
+
+      const dataLeituraStr = dataLeitura.toLocaleDateString('pt-BR', { timeZone: TZ });
+      if (dataLeituraStr !== ontemStr) continue;
+
+      const horaLeitura = Number(
+        dataLeitura.toLocaleTimeString('pt-BR', { timeZone: TZ, hour: '2-digit', hour12: false }).split(':')[0]
+      );
+      if (horaLeitura >= HORA_LIMITE) continue;
+
+      elegiveis.set(celular, nome);
+    }
+
+    return Array.from(elegiveis.entries()).map(([celular, nome]) => ({ celular, nome }));
+  } catch (erro: any) {
+    logger.warn('Inscritos', `Erro ao listar elegíveis para lembrete: ${erro?.message || erro}`);
+    return [];
+  }
+}
+
+/**
  * Abate crédito de indicação (coluna O) do UID até o valor solicitado.
  * Usado para abater a cobrança de R$5 de itens extras antes de gerar a cobrança final.
  */

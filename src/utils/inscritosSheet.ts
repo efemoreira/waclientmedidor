@@ -183,14 +183,25 @@ export async function adicionarInscrito(params: {
 
     logger.info('Inscritos', `Adicionando novo inscrito: ${params.nome} (${celularFormatado})`);
 
-    // Usar append evita colisões quando múltiplas requisições gravam ao mesmo tempo.
-    await sheets.spreadsheets.values.append({
+    // Não usar values.append aqui: quando há linhas com dados "soltos" fora da
+    // coluna A em algum lugar da planilha (ex.: linhas em branco seguidas de
+    // dados isolados em outra coluna), o auto-detect de tabela do append pode
+    // ancorar a tabela errada e desalinhar todas as colunas da linha inserida.
+    // Calculamos a próxima linha vazia explicitamente e usamos update.
+    const colA = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!A:A`,
+      majorDimension: 'COLUMNS',
+      valueRenderOption: 'FORMATTED_VALUE',
+    });
+    const proximaLinha = (colA.data?.values?.[0]?.length || 1) + 1;
+
+    await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
       // Colunas T (Ultimo_relatorio_semanal) e U (Ultimo_relatorio_mensal) ficam
       // vazias até o primeiro relatório periódico (ver atualizarUltimoRelatorio).
-      range: `${SHEET_NAME}!A:V`,
+      range: `${SHEET_NAME}!A${proximaLinha}:V${proximaLinha}`,
       valueInputOption: 'USER_ENTERED',
-      insertDataOption: 'INSERT_ROWS',
       requestBody: {
         values: [[
           uid,

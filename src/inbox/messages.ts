@@ -44,6 +44,31 @@ Você pode usar os seguintes comandos:
 
 Você também pode enviar sua leitura diretamente (ex: "456" ou "energia 456").`,
 
+  MENU_ADMIN: `🛠️ *Menu Admin — Guardião*
+
+👥 *Leads*
+• */leads* — ver leads pendentes
+• */lead [num] [status]* — atualizar status (novo/contactado/fechado/perdido)
+• */lead fechar [num]* — fechar lead e iniciar cadastro
+• */lead ajuda* — mais opções
+
+👤 *Clientes e extintores*
+• */cadastrar* — cadastrar cliente (fluxo guiado)
+• */extintor [num]* — adicionar extintor
+• */extintor editar [num]* — editar extintor
+• */extintor remover [num]* — remover extintor
+• */extintor ajuda* — mais opções
+
+🔍 *Consultas*
+• */ver [num]* — dados e extintores do cliente
+• */clientes* — listar todos os clientes
+
+📊 *Relatórios e lembretes*
+• */relatorio* — resumo executivo agora
+• */lembrar* — disparar job de lembretes
+
+_Use /[comando] ajuda para detalhes de cada um._`,
+
   // Mensagens de ajuda
   HELP_ENVIAR_LEITURA: `💧 Como enviar leituras
 

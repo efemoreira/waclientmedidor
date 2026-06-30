@@ -92,9 +92,9 @@ export class CommandHandler {
       {
         names: ['ajuda', 'help', 'menu'],
         description: 'Exibir menu de ajuda',
-        aliases: ['?', 'comandos'],
+        aliases: ['?'],
         handler: async (ctx: CommandContext) => {
-          await ctx.sendMessage(ctx.celular, MESSAGES.MENU_PRINCIPAL);
+          await ctx.sendMessage(ctx.celular, isAdmin(ctx.celular) ? MESSAGES.MENU_ADMIN : MESSAGES.MENU_PRINCIPAL);
           return { handled: true };
         },
       },
@@ -169,6 +169,19 @@ export class CommandHandler {
             return { handled: false };
           }
 
+          const args = ctx.textoNormalizado.replace(/^lembrar\s*/i, '').trim();
+          if (args === 'ajuda' || args === 'help') {
+            await ctx.sendMessage(ctx.celular,
+              `📖 */lembrar*\n\nDispara manualmente o job de lembretes (mesmo que roda todo dia às 10h BRT):\n` +
+              `• Envia nudge de retorno para clientes elegíveis (janela 24h)\n` +
+              `• Envia lembrete de extintor vencendo (30 dias)\n` +
+              `• Envia lembrete de inspeção próxima (14 dias)\n` +
+              `• Notifica leads estagnados (sem contato há +2 dias)\n` +
+              `• Resume extintores fora da janela 24h para contato manual`
+            );
+            return { handled: true };
+          }
+
           await ctx.sendMessage(ctx.celular, `⏳ Rodando job de lembretes...`);
 
           try {
@@ -191,6 +204,19 @@ export class CommandHandler {
         description: 'Ver leads pendentes de contato — admin',
         handler: async (ctx: CommandContext) => {
           if (!isAdmin(ctx.celular)) return { handled: false };
+
+          const args = ctx.textoNormalizado.replace(/^leads\s*/i, '').trim();
+          if (args === 'ajuda' || args === 'help') {
+            await ctx.sendMessage(ctx.celular,
+              `📖 *Leads*\n\n` +
+              `• */leads* — lista todos os leads com status *novo*\n` +
+              `• */lead [número] [status]* — atualiza status de um lead\n` +
+              `  Status válidos: novo · contactado · fechado · perdido\n` +
+              `• */lead fechar [número]* — fecha o lead e inicia cadastro do cliente\n\n` +
+              `Ex: /lead 5585999999999 contactado`
+            );
+            return { handled: true };
+          }
 
           await ctx.sendMessage(ctx.celular, '⏳ Buscando leads pendentes...');
 
@@ -450,7 +476,19 @@ export class CommandHandler {
         handler: async (ctx: CommandContext) => {
           if (!isAdmin(ctx.celular)) return { handled: false };
 
-          const numero = ctx.textoNormalizado.replace(/^ver\s*/i, '').replace(/\D/g, '').trim();
+          const args = ctx.textoNormalizado.replace(/^ver\s*/i, '').trim();
+
+          if (!args || args === 'ajuda' || args === 'help') {
+            await ctx.sendMessage(ctx.celular,
+              `📖 */ver*\n\nMostra dados do cliente e seus extintores com status de vencimento 🔴🟡🟢.\n\n` +
+              `• */ver [número]* — dados + extintores\n\n` +
+              `Ex: /ver 5585999999999\n\n` +
+              `Para editar: /extintor editar [número]\nPara remover: /extintor remover [número]`
+            );
+            return { handled: true };
+          }
+
+          const numero = args.replace(/\D/g, '');
 
           if (!numero) {
             await ctx.sendMessage(ctx.celular, `Use: /ver [número]\nEx: /ver 5585999999999`);
@@ -516,6 +554,16 @@ export class CommandHandler {
         handler: async (ctx: CommandContext) => {
           if (!isAdmin(ctx.celular)) return { handled: false };
 
+          const args = ctx.textoNormalizado.replace(/^relat[oó]rio\s*/i, '').trim();
+          if (args === 'ajuda' || args === 'help') {
+            await ctx.sendMessage(ctx.celular,
+              `📖 */relatorio*\n\nGera o resumo executivo agora (sem esperar a segunda-feira):\n` +
+              `• Leads novos e estagnados\n• Clientes ativos\n• Extintores vencendo em 30 dias\n\n` +
+              `O mesmo relatório é enviado automaticamente toda segunda-feira às 12h.`
+            );
+            return { handled: true };
+          }
+
           await ctx.sendMessage(ctx.celular, '⏳ Gerando relatório...');
           try {
             const resumo = await gerarResumoSemanal();
@@ -533,6 +581,16 @@ export class CommandHandler {
         description: 'Listar todos os clientes — admin',
         handler: async (ctx: CommandContext) => {
           if (!isAdmin(ctx.celular)) return { handled: false };
+
+          const args = ctx.textoNormalizado.replace(/^clientes\s*/i, '').trim();
+          if (args === 'ajuda' || args === 'help') {
+            await ctx.sendMessage(ctx.celular,
+              `📖 */clientes*\n\nLista todos os clientes cadastrados (até 20 por mensagem).\n\n` +
+              `• */clientes* — lista paginada\n` +
+              `• */ver [número]* — detalhes + extintores de um cliente específico`
+            );
+            return { handled: true };
+          }
 
           await ctx.sendMessage(ctx.celular, '⏳ Buscando clientes...');
           const clientes = await listarTodosClientes();

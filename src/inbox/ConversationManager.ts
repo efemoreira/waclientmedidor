@@ -502,7 +502,15 @@ export class ConversationManager {
 
             // ── Bypass admin: admins pulam verificação de inscrição e processam direto ──
             if (ADMIN_PHONES.has(de.replace(/\D/g, ''))) {
-              const textoNormAdmin = normalizarTexto(texto).trim();
+              // Strip '/' para que /lembrar, /leads, /ver etc. funcionem com ou sem barra
+              const textoNormAdmin = normalizarTexto(texto).replace(/^\//, '').trim();
+
+              // Limpar stale state de lead que possa ter sido gravado antes do admin ser reconhecido
+              if (conversa.inscricaoStage || conversa.leadAnuncioData) {
+                conversa.inscricaoStage = undefined;
+                conversa.leadAnuncioData = undefined;
+                await this.persistirConversas();
+              }
 
               // Se há um fluxo guiado ativo, delegar ao adminFlowHandler
               if (conversa.adminStage) {

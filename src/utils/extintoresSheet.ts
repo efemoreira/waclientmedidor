@@ -237,6 +237,117 @@ export async function buscarExtintoresAguardandoConfirmacao(idCliente: string): 
 }
 
 /**
+ * Atualiza um campo específico de um extintor pela linha na planilha.
+ */
+export async function atualizarCampoExtintor(
+  rowIndex: number,
+  campo: 'imovel' | 'localSetor' | 'tipo' | 'capacidade' | 'dataVencimento' | 'dataUltimaInspecao' | 'proximaInspecao',
+  valor: string
+): Promise<{ ok: boolean; erro?: string }> {
+  const auth = getAuth();
+  if (!auth) return { ok: false, erro: 'Credenciais não configuradas' };
+
+  const COLUNA: Record<string, string> = {
+    imovel: 'C',
+    localSetor: 'D',
+    tipo: 'E',
+    capacidade: 'F',
+    dataVencimento: 'G',
+    dataUltimaInspecao: 'H',
+    proximaInspecao: 'I',
+  };
+  const col = COLUNA[campo];
+  if (!col) return { ok: false, erro: `Campo desconhecido: ${campo}` };
+
+  try {
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!${col}${rowIndex}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[valor]] },
+    });
+    logger.info('ExtintoresSheet', `✅ Campo ${campo} atualizado na linha ${rowIndex}: ${valor}`);
+    return { ok: true };
+  } catch (erro: any) {
+    logger.warn('ExtintoresSheet', `Erro ao atualizar campo ${campo}: ${erro?.message || erro}`);
+    return { ok: false, erro: erro?.message };
+  }
+}
+
+/**
+ * Lista todos os extintores de um cliente específico.
+ */
+export async function listarExtintoresPorCliente(idCliente: string): Promise<ExtintorRow[]> {
+  const auth = getAuth();
+  if (!auth) return [];
+
+  try {
+    const sheets = google.sheets({ version: 'v4', auth });
+    const todos = await lerExtintores(sheets);
+    const clienteNorm = idCliente.replace(/\D/g, '');
+    return todos.filter((e) => e.idCliente === clienteNorm);
+  } catch (erro: any) {
+    logger.warn('ExtintoresSheet', `Erro ao listar extintores do cliente: ${erro?.message || erro}`);
+    return [];
+  }
+}
+
+export interface AdicionarExtintorParams {
+  idCliente: string;
+  nomeCliente?: string;
+  imovel: string;
+  localSetor?: string;
+  tipo: string;
+  capacidade: string;
+  dataVencimento: string;
+  dataUltimaInspecao?: string;
+  proximaInspecao?: string;
+}
+
+/**
+ * Adiciona um novo extintor para um cliente na aba extintores.
+ */
+export async function adicionarExtintor(params: AdicionarExtintorParams): Promise<{ ok: boolean; erro?: string }> {
+  const auth = getAuth();
+  if (!auth) return { ok: false, erro: 'Credenciais não configuradas' };
+
+  try {
+    const sheets = google.sheets({ version: 'v4', auth });
+    const idClienteNorm = params.idCliente.replace(/\D/g, '');
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!A:L`,
+      valueInputOption: 'USER_ENTERED',
+      insertDataOption: 'INSERT_ROWS',
+      requestBody: {
+        values: [[
+          idClienteNorm,
+          params.nomeCliente || '',
+          params.imovel,
+          params.localSetor || '',
+          params.tipo,
+          params.capacidade,
+          params.dataVencimento,
+          params.dataUltimaInspecao || '',
+          params.proximaInspecao || '',
+          '',
+          '',
+          '',
+        ]],
+      },
+    });
+
+    logger.info('ExtintoresSheet', `✅ Extintor adicionado: ${idClienteNorm} / ${params.imovel} — ${params.tipo} ${params.capacidade}`);
+    return { ok: true };
+  } catch (erro: any) {
+    logger.warn('ExtintoresSheet', `Erro ao adicionar extintor: ${erro?.message || erro}`);
+    return { ok: false, erro: erro?.message };
+  }
+}
+
+/**
  * Marca os extintores como confirmados (cliente respondeu SIM).
  */
 export async function marcarExtintoresConfirmados(rowIndexes: number[]): Promise<void> {

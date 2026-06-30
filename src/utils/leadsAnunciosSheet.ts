@@ -8,6 +8,7 @@ const PRIVATE_KEY = process.env.GOOGLE_SHEETS_PRIVATE_KEY || '';
 
 // Colunas: A=data  B=id_cliente  C=nome  D=endereco  E=qtd_extintores  F=status
 
+
 function normalizarPrivateKey(raw: string): string {
   let key = raw.trim();
   if (key.startsWith('"') && key.endsWith('"')) key = key.slice(1, -1);
@@ -33,8 +34,9 @@ export interface LeadAnuncioParams {
 
 /**
  * Registra um lead de anúncio (prospect que chegou pelo WhatsApp/site).
+ * Deduplicação: não cria novo lead se já existe um com status 'novo' para o mesmo cliente.
  */
-export async function registrarLeadAnuncio(params: LeadAnuncioParams): Promise<{ ok: boolean; erro?: string }> {
+export async function registrarLeadAnuncio(params: LeadAnuncioParams): Promise<{ ok: boolean; duplicado?: boolean; erro?: string }> {
   const auth = getAuth();
   if (!auth) return { ok: false, erro: 'Credenciais não configuradas' };
 
@@ -42,6 +44,13 @@ export async function registrarLeadAnuncio(params: LeadAnuncioParams): Promise<{
     const sheets = google.sheets({ version: 'v4', auth });
     const data = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     const idClienteNormalizado = params.idCliente.replace(/\D/g, '');
+
+    // Deduplicação: verificar se já existe lead 'novo' para esse cliente
+    const existentes = await listarLeadsAnuncios('novo');
+    if (existentes.some((l) => l.idCliente === idClienteNormalizado)) {
+      logger.info('LeadsAnunciosSheet', `⚠️ Lead duplicado ignorado: ${idClienteNormalizado}`);
+      return { ok: true, duplicado: true };
+    }
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
@@ -65,5 +74,92 @@ export async function registrarLeadAnuncio(params: LeadAnuncioParams): Promise<{
   } catch (erro: any) {
     logger.warn('LeadsAnunciosSheet', `Erro ao registrar lead de anúncio: ${erro?.message || erro}`);
     return { ok: false, erro: erro?.message };
+  }
+}
+
+export interface LeadAnuncio {
+  rowIndex: number;
+  data: string;
+  idCliente: string;
+  nome: string;
+  endereco: string;
+  qtdExtintores: string;
+  status: string;
+}
+
+/**
+ * Lista todos os leads de anúncio, opcionalmente filtrando por status.
+ */
+export async function listarLeadsAnuncios(statusFiltro?: string): Promise<LeadAnuncio[]> {
+  const auth = getAuth();
+  if (!auth) return [];
+
+  try {
+    const sheets = google.sheets({ version: 'v4', auth });
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!A:F`,
+      majorDimension: 'ROWS',
+      valueRenderOption: 'FORMATTED_VALUE',
+    });
+
+    const rows = result.data?.values || [];
+    const leads: LeadAnuncio[] = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      if (!String(r[0] || '').trim()) continue;
+      const status = String(r[5] || '').trim();
+      if (statusFiltro && status !== statusFiltro) continue;
+      leads.push({
+        rowIndex: i + 1,
+        data: String(r[0] || ''),
+        idCliente: String(r[1] || '').replace(/\D/g, ''),
+        nome: String(r[2] || ''),
+        endereco: String(r[3] || ''),
+        qtdExtintores: String(r[4] || ''),
+        status,
+      });
+    }
+
+    return leads;
+  } catch (erro: any) {
+    logger.warn('LeadsAnunciosSheet', `Erro ao listar leads de anúncio: ${erro?.message || erro}`);
+    return [];
+  }
+}
+
+/**
+ * Atualiza o status de todos os leads de anúncio de um cliente (busca por idCliente).
+ */
+export async function atualizarStatusLeadAnuncio(
+  idCliente: string,
+  novoStatus: string
+): Promise<{ ok: boolean; atualizados: number; erro?: string }> {
+  const auth = getAuth();
+  if (!auth) return { ok: false, atualizados: 0, erro: 'Credenciais não configuradas' };
+
+  const clienteNorm = idCliente.replace(/\D/g, '');
+
+  try {
+    const todos = await listarLeadsAnuncios();
+    const alvo = todos.filter((l) => l.idCliente === clienteNorm);
+    if (!alvo.length) return { ok: true, atualizados: 0 };
+
+    const sheets = google.sheets({ version: 'v4', auth });
+    for (const lead of alvo) {
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SHEET_ID,
+        range: `${SHEET_NAME}!F${lead.rowIndex}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [[novoStatus]] },
+      });
+    }
+
+    logger.info('LeadsAnunciosSheet', `✅ Status atualizado para "${novoStatus}": ${alvo.length} lead(s) de ${clienteNorm}`);
+    return { ok: true, atualizados: alvo.length };
+  } catch (erro: any) {
+    logger.warn('LeadsAnunciosSheet', `Erro ao atualizar status: ${erro?.message || erro}`);
+    return { ok: false, atualizados: 0, erro: erro?.message };
   }
 }

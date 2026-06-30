@@ -17,6 +17,7 @@ import {
   marcarLembreteInspecaoEnviado,
   type ExtintorVencendo,
 } from './extintoresSheet';
+import { verificarLeadsEstagnados } from './relatoriosAdmin';
 import { logger } from './logger';
 import { MESSAGES } from '../inbox/messages';
 
@@ -29,6 +30,7 @@ export interface ResultadoJobLembrete {
   lembretesExtintorEnviados: number;
   lembretesInspecaoEnviados: number;
   extintoresForaJanela: number;
+  leadsEstagnados: number;
 }
 
 function delay(ms: number): Promise<void> {
@@ -39,6 +41,15 @@ function montarResumoVencimentos(extintores: ExtintorVencendo[]): string {
   if (!extintores.length) return 'Nenhum extintor vencendo nos próximos 30 dias.';
   return extintores
     .map((e) => `• ${e.nomeCliente || e.idCliente} — ${e.imovel} (${e.tipo}) vence em ${e.mesPorExtenso} (${e.diasRestantes}d)`)
+    .join('\n');
+}
+
+function montarResumoVencimentosComLink(extintores: ExtintorVencendo[]): string {
+  if (!extintores.length) return '';
+  return extintores
+    .map((e) =>
+      `• ${e.nomeCliente || e.idCliente} — ${e.imovel} (${e.tipo}) vence em ${e.mesPorExtenso} (${e.diasRestantes}d)\n  📱 https://wa.me/${e.idCliente}`
+    )
     .join('\n');
 }
 
@@ -61,6 +72,7 @@ export async function executarJobLembrete(
     lembretesExtintorEnviados: 0,
     lembretesInspecaoEnviados: 0,
     extintoresForaJanela: 0,
+    leadsEstagnados: 0,
   };
 
   // — 1. Buscar dados em paralelo —
@@ -119,13 +131,23 @@ export async function executarJobLembrete(
     await delay(DELAY_MS);
   }
 
+  // — 5b. Marcar extintores fora da janela como processados
+  //   Permite que o cliente confirme via SIM se Oscar contactar manualmente
+  for (const ext of extintoresForaJanela) {
+    try {
+      await marcarLembreteVencimentoEnviado(ext.rowIndex);
+    } catch (e: any) {
+      logger.warn('JobLembrete', `Erro ao marcar extintor fora da janela: ${e?.message || e}`);
+    }
+  }
+
   // — 6. Resumo para os admins —
   const linhasResumo: string[] = [];
 
   if (vencendo.length > 0) {
     linhasResumo.push(`🧯 *Extintores vencendo (próx. 30 dias)*\n${montarResumoVencimentos(vencendo)}`);
     if (extintoresForaJanela.length > 0) {
-      linhasResumo.push(`⚠️ *${extintoresForaJanela.length} extintor(es) fora da janela de 24h* — contactar manualmente:\n${montarResumoVencimentos(extintoresForaJanela)}`);
+      linhasResumo.push(`⚠️ *${extintoresForaJanela.length} extintor(es) fora da janela de 24h* — contactar manualmente:\n${montarResumoVencimentosComLink(extintoresForaJanela)}`);
     }
   }
 
@@ -157,6 +179,24 @@ export async function executarJobLembrete(
     } catch (e: any) {
       logger.warn('JobLembrete', `Erro ao notificar Felipe: ${e?.message || e}`);
     }
+  }
+
+  // — 7. Verificar leads estagnados (> 2 dias sem contato) —
+  try {
+    const estagnados = await verificarLeadsEstagnados(2);
+    resultado.leadsEstagnados = estagnados.length;
+    if (estagnados.length > 0) {
+      const linhas = estagnados.slice(0, 5).map(
+        (e) => `• ${e.nome} (${e.tipo === 'agua' ? '💧' : '🧯'}) — ${e.diasSemContato}d\n  📱 https://wa.me/${e.idCliente}`
+      );
+      const extra = estagnados.length > 5 ? `\n_...e mais ${estagnados.length - 5}. Use /leads._` : '';
+      await sendMsg(
+        ADMIN_VENDAS_PHONE,
+        `⚠️ *${estagnados.length} lead(s) sem contato há +2 dias*\n\n${linhas.join('\n')}${extra}`
+      );
+    }
+  } catch (e: any) {
+    logger.warn('JobLembrete', `Erro ao verificar leads estagnados: ${e?.message}`);
   }
 
   logger.info('JobLembrete', `✅ Job concluído: ${JSON.stringify(resultado)}`);

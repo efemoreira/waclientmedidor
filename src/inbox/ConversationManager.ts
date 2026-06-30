@@ -12,9 +12,15 @@ import { CommandHandler } from './CommandHandler';
 import { PropertyManager, type ConversaNovoImovel } from './PropertyManager';
 import { buscarExtintoresAguardandoConfirmacao, marcarExtintoresConfirmados } from '../utils/extintoresSheet';
 import { registrarLeadAnuncio } from '../utils/leadsAnunciosSheet';
+import { processarAdminFlow } from '../utils/adminFlowHandler';
 
 const ADMIN_VENDAS_PHONE = process.env.ADMIN_VENDAS_PHONE || '558586999181'; // Oscar
 const ADMIN_TI_PHONE = process.env.ADMIN_TI_PHONE || '558597223863';         // Felipe
+
+const ADMIN_PHONES = new Set([
+  (process.env.ADMIN_VENDAS_PHONE || '558586999181').replace(/\D/g, ''),
+  (process.env.ADMIN_TI_PHONE    || '558597223863').replace(/\D/g, ''),
+]);
 
 /**
  * Representa uma mensagem individual
@@ -65,6 +71,10 @@ export interface Conversation {
     endereco?: string;
     qtdExtintores?: string;
   };
+  adminStage?: string;
+  adminFlowData?: Record<string, any>;
+  clientStage?: 'solicitar_visita_horario';
+  clientFlowData?: Record<string, any>;
   pendingLeitura?: {
     valor?: string;
     tipo?: 'agua' | 'energia' | 'gas';
@@ -490,6 +500,60 @@ export class ConversationManager {
             // Bot silencioso quando operador humano assumiu a conversa
             if (conversa.isHuman) continue;
 
+            // ── Bypass admin: admins pulam verificação de inscrição e processam direto ──
+            if (ADMIN_PHONES.has(de.replace(/\D/g, ''))) {
+              const textoNormAdmin = normalizarTexto(texto).trim();
+
+              // Se há um fluxo guiado ativo, delegar ao adminFlowHandler
+              if (conversa.adminStage) {
+                try {
+                  const adminResult = await processarAdminFlow(
+                    conversa.adminStage,
+                    texto,
+                    textoNormAdmin,
+                    conversa.adminFlowData || {},
+                    de,
+                    this.enviarMensagem.bind(this)
+                  );
+                  if (adminResult.handled) {
+                    conversa.adminStage = adminResult.updatedStage || undefined;
+                    conversa.adminFlowData = adminResult.updatedData || {};
+                    await this.persistirConversas();
+                    continue;
+                  }
+                } catch (e: any) {
+                  this.log(`❌ Erro no adminFlowHandler: ${e?.message || e}`);
+                  conversa.adminStage = undefined;
+                  await this.persistirConversas();
+                }
+              }
+
+              // Processar como comando normal de admin
+              const inscricoes = await listarInscricoesPorCelular(de);
+              const commandResult = await this.commandHandler.process({
+                celular: de,
+                texto,
+                textoNormalizado: textoNormAdmin,
+                inscricoes,
+                gastosManager: this.gastosManager,
+                client: this.client,
+                sendMessage: this.enviarMensagem.bind(this),
+              });
+
+              if (commandResult.handled) {
+                if (commandResult.startAdminFlow) {
+                  conversa.adminStage = commandResult.startAdminFlow;
+                  conversa.adminFlowData = commandResult.adminFlowData || {};
+                  await this.persistirConversas();
+                }
+                continue;
+              }
+
+              // Admin enviou algo que não é comando e não há fluxo ativo — ignora silenciosamente
+              continue;
+            }
+            // ── Fim bypass admin ──────────────────────────────────────────────
+
             // Verificar fluxo de novo imóvel primeiro
             if (conversa.novoImovel) {
               const resultado = await this.propertyManager.processarProximoPasso(
@@ -584,7 +648,7 @@ export class ConversationManager {
                       qtdExtintores: lead.qtdExtintores || texto,
                     });
 
-                    const msgAdmins = `🔔 *Novo lead de extintor*\n\n👤 ${lead.nome || 'sem nome'}\n📍 ${lead.endereco || 'sem endereço'}\n🧯 Qtd estimada: ${lead.qtdExtintores || texto}\n📱 ${de}`;
+                    const msgAdmins = `🔔 *Novo lead de extintor*\n\n👤 ${lead.nome || 'sem nome'}\n📍 ${lead.endereco || 'sem endereço'}\n🧯 Qtd estimada: ${lead.qtdExtintores || texto}\n📱 https://wa.me/${de.replace(/\D/g, '')}`;
                     try {
                       await this.enviarMensagem(ADMIN_VENDAS_PHONE, msgAdmins);
                       await this.enviarMensagem(ADMIN_TI_PHONE, msgAdmins);
@@ -693,7 +757,7 @@ export class ConversationManager {
                   await this.enviarMensagem(de, MESSAGES.EXTINTOR_CONFIRMACAO_AGENDAMENTO(imoveis));
 
                   const resumo = pendentes.map((e) => `• ${e.imovel} — ${e.tipo} (vence ${e.dataVencimento})`).join('\n');
-                  const msgOscar = `✅ *Agendamento confirmado pelo cliente*\n\n👤 ${verificacao.nome || de}\n📱 ${de}\n\n${resumo}\n\nAgendar visita.`;
+                  const msgOscar = `✅ *Agendamento confirmado pelo cliente*\n\n👤 ${verificacao.nome || de}\n📱 https://wa.me/${de.replace(/\D/g, '')}\n\n${resumo}\n\nAgendar visita.`;
                   try {
                     await this.enviarMensagem(ADMIN_VENDAS_PHONE, msgOscar);
                   } catch (e: any) {
@@ -703,6 +767,30 @@ export class ConversationManager {
                 }
               } catch (e: any) {
                 this.log(`❌ Erro ao verificar extintores pendentes: ${e?.message || e}`);
+              }
+            }
+
+            // Fluxo de cliente em andamento (ex: solicitar visita)
+            if (conversa.clientStage) {
+              if (conversa.clientStage === 'solicitar_visita_horario') {
+                const horario = texto.trim();
+                const nome = verificacao.nome || de;
+                await this.enviarMensagem(
+                  de,
+                  `✅ Solicitação registrada! Nossa equipe entrará em contato para confirmar o agendamento.\n\nAgradecemos a preferência! 🧯`
+                );
+                try {
+                  await this.enviarMensagem(
+                    ADMIN_VENDAS_PHONE,
+                    `🗓️ *Solicitação de visita — cliente*\n\n👤 ${nome}\n📱 https://wa.me/${de.replace(/\D/g, '')}\n📅 Preferência: *${horario}*`
+                  );
+                } catch (e: any) {
+                  this.log(`❌ Erro ao notificar Oscar sobre solicitação de visita: ${e?.message || e}`);
+                }
+                conversa.clientStage = undefined;
+                conversa.clientFlowData = undefined;
+                await this.persistirConversas();
+                continue;
               }
             }
 
@@ -718,6 +806,11 @@ export class ConversationManager {
             });
 
             if (commandResult.handled) {
+              if (commandResult.startClientFlow) {
+                conversa.clientStage = commandResult.startClientFlow as 'solicitar_visita_horario';
+                conversa.clientFlowData = commandResult.clientFlowData || {};
+                await this.persistirConversas();
+              }
               await this.enviarNudgeSeNecessario(de, inscricoes);
               continue;
             }

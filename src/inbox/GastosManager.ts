@@ -289,7 +289,7 @@ export class GastosManager {
         desvioPercent,
       });
 
-      const msgOscar = `🔴 *Lead de água — manutenção hidráulica*\n\n👤 ${nomeCliente || de}\n🏠 Imóvel: ${idImovel}\n📈 Consumo +${desvioPercent.toFixed(0)}% acima do normal\n\nSugerir visita de verificação hidráulica.`;
+      const msgOscar = `🔴 *Lead de água — manutenção hidráulica*\n\n👤 ${nomeCliente || de}\n🏠 Imóvel: ${idImovel}\n📈 Consumo +${desvioPercent.toFixed(0)}% acima do normal\n📱 https://wa.me/${de.replace(/\D/g, '')}\n\nSugerir visita de verificação hidráulica.`;
       await this._send(ADMIN_VENDAS_PHONE, msgOscar);
     } catch (e: any) {
       logger.warn('GastosManager', `Erro ao processar lead de água: ${e?.message || e}`);

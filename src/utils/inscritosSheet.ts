@@ -385,6 +385,53 @@ export async function atualizarUltimaLeitura(
   }
 }
 
+export interface ClienteResumo {
+  celular: string;
+  nome: string;
+  bairro: string;
+  dataCadastro: string;
+}
+
+/**
+ * Lista todos os clientes únicos (deduplicado por celular).
+ */
+export async function listarTodosClientes(): Promise<ClienteResumo[]> {
+  const auth = getAuth();
+  if (!auth) return [];
+
+  try {
+    const sheets = google.sheets({ version: 'v4', auth });
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!A:G`,
+      majorDimension: 'ROWS',
+      valueRenderOption: 'FORMATTED_VALUE',
+    });
+
+    const rows = result.data?.values || [];
+    const vistos = new Set<string>();
+    const clientes: ClienteResumo[] = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i] || [];
+      const celular = String(row[3] || '').replace(/\D/g, '');
+      if (!celular || vistos.has(celular)) continue;
+      vistos.add(celular);
+      clientes.push({
+        celular,
+        nome: String(row[2] || ''),
+        bairro: String(row[6] || ''),
+        dataCadastro: String(row[5] || ''),
+      });
+    }
+
+    return clientes;
+  } catch (erro: any) {
+    logger.warn('Inscritos', `Erro ao listar todos os clientes: ${erro?.message || erro}`);
+    return [];
+  }
+}
+
 /**
  * Lista os celulares elegíveis para receber a mensagem-gatilho de retorno:
  * última leitura enviada no dia anterior (fuso America/Sao_Paulo) e antes das 22h.

@@ -453,6 +453,31 @@ ${casas}`,
   LEMBRETE_RETORNO: (nome: string) =>
     `👋 Olá${nome ? `, ${nome}` : ''}! Passando para saber se você precisa de alguma ajuda com o monitoramento do seu consumo. Qualquer dúvida, é só responder aqui.`,
 
+  // — Frente 1: confirmação de agendamento de recarga/inspeção —
+  EXTINTOR_CONFIRMACAO_AGENDAMENTO: (imoveis: string[]) =>
+    `✅ Agendamento confirmado!\n\nVou avisar o responsável para marcar a visita nos imóveis: ${imoveis.join(', ')}.\n\nEm breve você receberá o contato para combinar a data.`,
+
+  EXTINTOR_SEM_PENDENTE: `Não encontrei nenhum extintor aguardando confirmação de agendamento no seu cadastro.\n\nSe precisar de mais alguma coisa, é só falar.`,
+
+  // — Frente 2: alerta de consumo anormal de água —
+  AGUA_LEAD_MENSAGEM_CLIENTE: `🔧 Na leitura de hoje o consumo veio acima do normal — costuma ser sinal de vazamento. Posso mandar um técnico localizar antes de virar conta alta. Quer que eu agende?\n\nResponda *SIM* que eu marco.`,
+
+  // — Frente 3: captação de lead de anúncio —
+  LEAD_BOAS_VINDAS: [
+    `👋 Olá! Bem-vindo à *Guardião Extintores* — especialistas em manutenção preventiva e regularização de extintores em Fortaleza.`,
+    `🎯 Oferecemos *inspeção gratuita* dos extintores do seu imóvel ou condomínio, com relatório do que está vencido ou irregular para a vistoria do Corpo de Bombeiros.\n\nSem compromisso.`,
+    `📝 Para agendar, preciso de algumas informações rápidas.\n\nPrimeiro, qual é o seu nome?`,
+  ],
+
+  LEAD_PERGUNTA_ENDERECO: `📍 Qual é o endereço ou o nome do condomínio/empresa?`,
+
+  LEAD_PERGUNTA_QTD_EXTINTORES: `🧯 Quantos extintores aproximadamente você tem no local?\n\n(Pode ser um número aproximado, ex: 5, 20, 50+)`,
+
+  LEAD_REGISTRADO: (nome: string) =>
+    `✅ Perfeito, ${nome}! Vou repassar para nosso responsável comercial que entrará em contato para agendar a inspeção gratuita.\n\nQualquer dúvida, é só responder aqui. 😊`,
+
+  LEAD_PERGUNTA_MONITORAMENTO: `\n\nVocê sabia que também oferecemos monitoramento de consumo de água, energia e gás para condomínios e empresas?\n\nDigite *SIM* se quiser se cadastrar no sistema de monitoramento, ou pode aguardar o contato sobre os extintores.`,
+
   // Cobrança de itens extras (imóvel/tipo adicional) e crédito de indicação
   CREDITO_APLICADO: (valor: number) =>
     `🎁 Crédito de indicação aplicado: R$ ${valor.toFixed(2).replace('.', ',')}`,

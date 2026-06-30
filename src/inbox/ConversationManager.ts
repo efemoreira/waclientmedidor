@@ -10,6 +10,11 @@ import { lerConversas, salvarConversas, lerMeta, salvarMeta } from '../utils/con
 import { MESSAGES } from './messages';
 import { CommandHandler } from './CommandHandler';
 import { PropertyManager, type ConversaNovoImovel } from './PropertyManager';
+import { buscarExtintoresAguardandoConfirmacao, marcarExtintoresConfirmados } from '../utils/extintoresSheet';
+import { registrarLeadAnuncio } from '../utils/leadsAnunciosSheet';
+
+const ADMIN_VENDAS_PHONE = process.env.ADMIN_VENDAS_PHONE || '558586999181'; // Oscar
+const ADMIN_TI_PHONE = process.env.ADMIN_TI_PHONE || '558597223863';         // Felipe
 
 /**
  * Representa uma mensagem individual
@@ -41,7 +46,11 @@ export interface Conversation {
     | 'cep'
     | 'tipo_imovel'
     | 'pessoas'
-    | 'uid_indicador';
+    | 'uid_indicador'
+    | 'lead_nome'
+    | 'lead_endereco'
+    | 'lead_qtd_extintores'
+    | 'lead_pos_registro';
   inscricaoData?: {
     nome?: string;
     bairro?: string;
@@ -50,6 +59,11 @@ export interface Conversation {
     pessoas?: string;
     uid_indicador?: string;
     lgpd_aceite_data?: string;
+  };
+  leadAnuncioData?: {
+    nome?: string;
+    endereco?: string;
+    qtdExtintores?: string;
   };
   pendingLeitura?: {
     valor?: string;
@@ -506,6 +520,9 @@ export class ConversationManager {
                 'tipo_imovel': () => { conversa.inscricaoData!.tipo_imovel = texto; },
                 'pessoas': () => { conversa.inscricaoData!.pessoas = texto; },
                 'uid_indicador': () => { conversa.inscricaoData!.uid_indicador = texto; },
+                'lead_nome': () => { conversa.leadAnuncioData = conversa.leadAnuncioData || {}; conversa.leadAnuncioData.nome = texto; },
+                'lead_endereco': () => { conversa.leadAnuncioData = conversa.leadAnuncioData || {}; conversa.leadAnuncioData.endereco = texto; },
+                'lead_qtd_extintores': () => { conversa.leadAnuncioData = conversa.leadAnuncioData || {}; conversa.leadAnuncioData.qtdExtintores = texto; },
               };
 
               if (handlers[stage]) handlers[stage]();
@@ -547,6 +564,58 @@ export class ConversationManager {
                   case 'pessoas':
                     await avancar('uid_indicador', MESSAGES.INSCRICAO_UID_INDICADOR);
                     break;
+                  case 'lead_nome':
+                    await avancar('lead_endereco', MESSAGES.LEAD_PERGUNTA_ENDERECO);
+                    break;
+
+                  case 'lead_endereco':
+                    await avancar('lead_qtd_extintores', MESSAGES.LEAD_PERGUNTA_QTD_EXTINTORES);
+                    break;
+
+                  case 'lead_qtd_extintores': {
+                    const lead = conversa.leadAnuncioData || {};
+                    conversa.inscricaoStage = 'lead_pos_registro';
+                    await this.persistirConversas();
+
+                    await registrarLeadAnuncio({
+                      idCliente: de,
+                      nome: lead.nome || '',
+                      endereco: lead.endereco || '',
+                      qtdExtintores: lead.qtdExtintores || texto,
+                    });
+
+                    const msgAdmins = `🔔 *Novo lead de extintor*\n\n👤 ${lead.nome || 'sem nome'}\n📍 ${lead.endereco || 'sem endereço'}\n🧯 Qtd estimada: ${lead.qtdExtintores || texto}\n📱 ${de}`;
+                    try {
+                      await this.enviarMensagem(ADMIN_VENDAS_PHONE, msgAdmins);
+                      await this.enviarMensagem(ADMIN_TI_PHONE, msgAdmins);
+                    } catch (e: any) {
+                      this.log(`❌ Erro ao notificar admins sobre lead: ${e?.message || e}`);
+                    }
+
+                    await this.enviarMensagem(de, MESSAGES.LEAD_REGISTRADO(lead.nome || ''));
+                    await this.enviarMensagem(de, MESSAGES.LEAD_PERGUNTA_MONITORAMENTO);
+                    break;
+                  }
+
+                  case 'lead_pos_registro': {
+                    const aceitouMonitoramento = /^sim$/i.test(normalizarTexto(texto).trim());
+                    if (aceitouMonitoramento) {
+                      conversa.inscricaoStage = 'consentimento';
+                      conversa.inscricaoData = {};
+                      conversa.leadAnuncioData = undefined;
+                      await this.persistirConversas();
+                      for (const parte of MESSAGES.WELCOME_NEW_USER) {
+                        await this.enviarMensagem(de, parte);
+                      }
+                    } else {
+                      conversa.inscricaoStage = undefined;
+                      conversa.leadAnuncioData = undefined;
+                      await this.persistirConversas();
+                      await this.enviarMensagem(de, `Tudo certo! Assim que o responsável entrar em contato, você poderá tirar todas as dúvidas. 😊`);
+                    }
+                    break;
+                  }
+
                   case 'uid_indicador':
                     const dados = conversa.inscricaoData;
                     const resultado = await adicionarInscrito({
@@ -594,16 +663,16 @@ export class ConversationManager {
             }
 
             if (!verificacao.inscrito) {
-              // Não está inscrito - pedir consentimento LGPD antes de iniciar a inscrição
-              conversa.inscricaoStage = 'consentimento';
-              conversa.inscricaoData = {};
+              // Frente 3: número desconhecido → capturar lead de extintor antes do onboarding
+              conversa.inscricaoStage = 'lead_nome';
+              conversa.leadAnuncioData = {};
               await this.persistirConversas();
               try {
-                for (const parte of MESSAGES.WELCOME_NEW_USER) {
+                for (const parte of MESSAGES.LEAD_BOAS_VINDAS) {
                   await this.enviarMensagem(de, parte);
                 }
               } catch (erro: any) {
-                this.log(`❌ Falha ao enviar solicitação de inscrição: ${erro?.message || erro}`);
+                this.log(`❌ Falha ao enviar boas-vindas de lead: ${erro?.message || erro}`);
               }
               continue;
             }
@@ -613,6 +682,29 @@ export class ConversationManager {
 
             const textoNormalizado = normalizarTexto(texto).trim();
             const inscricoes = await listarInscricoesPorCelular(de);
+
+            // Frente 1: detectar SIM como confirmação de agendamento de extintor
+            if (/^sim$/i.test(textoNormalizado)) {
+              try {
+                const pendentes = await buscarExtintoresAguardandoConfirmacao(de);
+                if (pendentes.length > 0) {
+                  await marcarExtintoresConfirmados(pendentes.map((e) => e.rowIndex));
+                  const imoveis = [...new Set(pendentes.map((e) => e.imovel))];
+                  await this.enviarMensagem(de, MESSAGES.EXTINTOR_CONFIRMACAO_AGENDAMENTO(imoveis));
+
+                  const resumo = pendentes.map((e) => `• ${e.imovel} — ${e.tipo} (vence ${e.dataVencimento})`).join('\n');
+                  const msgOscar = `✅ *Agendamento confirmado pelo cliente*\n\n👤 ${verificacao.nome || de}\n📱 ${de}\n\n${resumo}\n\nAgendar visita.`;
+                  try {
+                    await this.enviarMensagem(ADMIN_VENDAS_PHONE, msgOscar);
+                  } catch (e: any) {
+                    this.log(`❌ Erro ao notificar Oscar sobre confirmação de extintor: ${e?.message || e}`);
+                  }
+                  continue;
+                }
+              } catch (e: any) {
+                this.log(`❌ Erro ao verificar extintores pendentes: ${e?.message || e}`);
+              }
+            }
 
             // Tentar processar como comando primeiro
             const commandResult = await this.commandHandler.process({

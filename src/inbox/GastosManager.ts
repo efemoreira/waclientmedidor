@@ -7,9 +7,12 @@ import { appendPredioEntry, obterUltimaLeitura, getWeekOfYear, obterInsightsCons
 import { listarInscricoesPorCelular, atualizarUltimoRelatorio, atualizarUltimaLeitura } from '../utils/inscritosSheet';
 import { jaEnviadoRelatorio, registrarRelatorioEnviado } from '../utils/relatoriosSheet';
 import { obterAnuncioPorBairro, registrarImpressao } from '../utils/anunciosSheet';
+import { registrarLeadAgua } from '../utils/leadsAguaSheet';
 import type { WhatsApp } from '../wabapi';
 import { MESSAGES } from './messages';
 import { logger } from '../utils/logger';
+
+const ADMIN_VENDAS_PHONE = process.env.ADMIN_VENDAS_PHONE || '558586999181'; // Oscar
 
 export interface PendingLeitura {
   valor?: string;
@@ -211,7 +214,7 @@ export class GastosManager {
       consumoMes?: string;
       mediaMes?: string;
     }
-  ): Promise<{ msg1: string; msg2: string; msg3: string }> {
+  ): Promise<{ msg1: string; msg2: string; msg3: string; nivelAlerta?: 'atencao' | 'forte'; mediaReferenciaDia?: number; consumoMesNum?: number }> {
     const insights = await obterInsightsConsumo(params.idImovel, params.tipo);
     const consumoMes = Number(String(params.consumoMes || '0').replace(',', '.')) || 0;
     const mediaDia = Number(String(params.mediaDia || params.media || '0').replace(',', '.')) || 0;
@@ -261,7 +264,36 @@ export class GastosManager {
       metaBarra: barraMeta,
     });
 
-    return { msg1, msg2, msg3 };
+    return { msg1, msg2, msg3, nivelAlerta: insights.nivelAlerta, mediaReferenciaDia: insights.mediaReferenciaDia, consumoMesNum: consumoMes };
+  }
+
+  /**
+   * Registra lead de manutenção hidráulica e notifica admins quando anomalia forte é detectada.
+   * Chamado após envio das mensagens de leitura — não bloqueia o fluxo principal.
+   */
+  private async processarLeadAgua(
+    de: string,
+    idImovel: string,
+    nomeCliente: string | undefined,
+    consumoAtualM3: number,
+    mediaReferenciaM3: number,
+    desvioPercent: number
+  ): Promise<void> {
+    try {
+      await registrarLeadAgua({
+        idCliente: de,
+        nomeCliente,
+        imovel: idImovel,
+        consumoAtual: consumoAtualM3,
+        consumoAnterior: mediaReferenciaM3,
+        desvioPercent,
+      });
+
+      const msgOscar = `🔴 *Lead de água — manutenção hidráulica*\n\n👤 ${nomeCliente || de}\n🏠 Imóvel: ${idImovel}\n📈 Consumo +${desvioPercent.toFixed(0)}% acima do normal\n\nSugerir visita de verificação hidráulica.`;
+      await this._send(ADMIN_VENDAS_PHONE, msgOscar);
+    } catch (e: any) {
+      logger.warn('GastosManager', `Erro ao processar lead de água: ${e?.message || e}`);
+    }
   }
 
   /**
@@ -483,7 +515,7 @@ export class GastosManager {
     if (result.ok) {
       const leituraAtual = pending.valor || leituraValor;
 
-      const { msg1, msg2, msg3 } = await this.montarMensagensLeitura({
+      const { msg1, msg2, msg3, nivelAlerta, mediaReferenciaDia } = await this.montarMensagensLeitura({
         tipo: pending.tipo,
         idImovel: pending.idImovel,
         data: result.data,
@@ -509,6 +541,15 @@ export class GastosManager {
         await atualizarUltimaLeitura(inscricao.uid, new Date().toISOString());
         await this.enviarAnuncioSeHouver(de, inscricao);
         await this.enviarRelatoriosPeriodicos(de, pending.idImovel, pending.tipo, result, inscricao);
+      }
+
+      // Frente 2: registrar lead de água quando anomalia forte é detectada
+      if (pending.tipo === 'agua' && nivelAlerta === 'forte' && mediaReferenciaDia && mediaReferenciaDia > 0) {
+        const consumoAtualNum = Number(String(result.consumoDia || '0').replace(',', '.')) || 0;
+        const desvio = ((consumoAtualNum - mediaReferenciaDia) / mediaReferenciaDia) * 100;
+        const inscricao2 = inscricoes.find(i => i.idImovel === pending.idImovel);
+        await this._send(de, MESSAGES.AGUA_LEAD_MENSAGEM_CLIENTE);
+        await this.processarLeadAgua(de, pending.idImovel!, inscricao2?.nome, consumoAtualNum, mediaReferenciaDia, desvio);
       }
     } else {
       await this._send(de, MESSAGES.ERRO_LEITURA_REGISTRO(result.erro));
@@ -630,7 +671,7 @@ export class GastosManager {
     });
 
     if (result.ok) {
-      const { msg1, msg2, msg3 } = await this.montarMensagensLeitura({
+      const { msg1, msg2, msg3, nivelAlerta, mediaReferenciaDia } = await this.montarMensagensLeitura({
         tipo: leituraTipo,
         idImovel,
         data: result.data,
@@ -656,6 +697,14 @@ export class GastosManager {
         await atualizarUltimaLeitura(inscricao.uid, new Date().toISOString());
         await this.enviarAnuncioSeHouver(de, inscricao);
         await this.enviarRelatoriosPeriodicos(de, idImovel, leituraTipo, result, inscricao);
+      }
+
+      // Frente 2: registrar lead de água quando anomalia forte é detectada
+      if (leituraTipo === 'agua' && nivelAlerta === 'forte' && mediaReferenciaDia && mediaReferenciaDia > 0) {
+        const consumoAtualNum = Number(String(result.consumoDia || '0').replace(',', '.')) || 0;
+        const desvio = ((consumoAtualNum - mediaReferenciaDia) / mediaReferenciaDia) * 100;
+        await this._send(de, MESSAGES.AGUA_LEAD_MENSAGEM_CLIENTE);
+        await this.processarLeadAgua(de, idImovel, inscricao?.nome, consumoAtualNum, mediaReferenciaDia, desvio);
       }
     } else {
       await this._send(de, MESSAGES.ERRO_LEITURA_REGISTRO(result.erro));

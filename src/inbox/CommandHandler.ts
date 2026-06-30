@@ -8,11 +8,13 @@ import { MESSAGES } from './messages';
 import { GastosManager } from './GastosManager';
 import type { InscritoDados } from './GastosManager';
 import { logger } from '../utils/logger';
-import { listarElegiveisLembrete } from '../utils/inscritosSheet';
+import { executarJobLembrete } from '../utils/jobLembrete';
 
-// Número autorizado a disparar o gatilho de retorno (comando "lembrar").
-const ADMIN_PHONE_LEMBRAR = '558597223863';
-const DELAY_ENTRE_LEMBRETES_MS = 1500;
+// Números autorizados a disparar o job de lembretes (comando "lembrar").
+const ADMIN_PHONES_LEMBRAR = new Set([
+  '558597223863', // Felipe (admTI)
+  '558586999181', // Oscar  (admVendas)
+]);
 
 export interface CommandContext {
   celular: string;
@@ -128,23 +130,30 @@ export class CommandHandler {
           return { handled: true };
         },
       },
-      // Comando admin: gatilho de retorno (reabre a janela de 24h de quem
-      // interagiu ontem antes das 22h). Restrito a um número autorizado.
+      // Comando admin: job unificado de lembretes.
+      // Restrição WhatsApp: só envia para quem mandou mensagem nas últimas 24h.
+      // Clientes fora da janela aparecem apenas no resumo para follow-up manual.
       {
         names: ['lembrar'],
-        description: 'Disparar mensagem-gatilho de retorno (admin)',
+        description: 'Disparar job de lembretes (nudge + extintores + inspeções) — admin',
         handler: async (ctx: CommandContext) => {
-          if (ctx.celular.replace(/\D/g, '') !== ADMIN_PHONE_LEMBRAR) {
+          if (!ADMIN_PHONES_LEMBRAR.has(ctx.celular.replace(/\D/g, ''))) {
             return { handled: false };
           }
 
-          const elegiveis = await listarElegiveisLembrete();
-          for (const { celular, nome } of elegiveis) {
-            await ctx.sendMessage(celular, MESSAGES.LEMBRETE_RETORNO(nome));
-            await new Promise((resolve) => setTimeout(resolve, DELAY_ENTRE_LEMBRETES_MS));
+          await ctx.sendMessage(ctx.celular, `⏳ Rodando job de lembretes...`);
+
+          try {
+            const resultado = await executarJobLembrete(ctx.sendMessage);
+            await ctx.sendMessage(
+              ctx.celular,
+              `✅ Job concluído:\n• Nudges: ${resultado.nudgesEnviados}\n• Extintores (enviados): ${resultado.lembretesExtintorEnviados}\n• Inspeções (enviadas): ${resultado.lembretesInspecaoEnviados}\n• Extintores fora da janela: ${resultado.extintoresForaJanela}`
+            );
+          } catch (e: any) {
+            logger.warn('CommandHandler', `Erro no job lembrar: ${e?.message || e}`);
+            await ctx.sendMessage(ctx.celular, `❌ Erro ao rodar job: ${e?.message || e}`);
           }
 
-          await ctx.sendMessage(ctx.celular, `✅ Lembrete enviado para ${elegiveis.length} contato(s).`);
           return { handled: true };
         },
       },

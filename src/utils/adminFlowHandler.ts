@@ -9,7 +9,7 @@
  */
 
 import { adicionarInscrito, listarInscricoesPorCelular } from './inscritosSheet';
-import { adicionarExtintor, listarExtintoresPorCliente, atualizarCampoExtintor } from './extintoresSheet';
+import { adicionarExtintor, listarExtintoresPorCliente, atualizarCampoExtintor, removerExtintor } from './extintoresSheet';
 import { logger } from './logger';
 
 const ADMIN_VENDAS_PHONE = (process.env.ADMIN_VENDAS_PHONE || '558586999181').replace(/\D/g, '');
@@ -280,6 +280,41 @@ export async function processarAdminFlow(
       await sendMsg(adminPhone, `❌ Erro ao atualizar: ${res.erro}`);
     } else {
       await sendMsg(adminPhone, `✅ *${campoSelecionado}* atualizado para *${valor || '(vazio)'}*.`);
+    }
+    return done();
+  }
+
+  // ─── REMOVER EXTINTOR ─────────────────────────────────────────────────────
+
+  if (stage === 'extintor_remover_escolha') {
+    const idx = parseInt(textoNorm, 10) - 1;
+    const extintores: any[] = flowData.extintores || [];
+    if (isNaN(idx) || idx < 0 || idx >= extintores.length) {
+      await sendMsg(adminPhone, `⚠️ Número inválido. Digite 1–${extintores.length} ou *cancelar*.`);
+      return next(stage, flowData);
+    }
+    const ext = extintores[idx];
+    await sendMsg(adminPhone,
+      `🗑️ Confirmar remoção?\n\n` +
+      `🧯 *${ext.tipo} ${ext.capacidade} — ${ext.imovel}${ext.localSetor ? ` (${ext.localSetor})` : ''}*\n` +
+      `📅 Vence: ${ext.dataVencimento || 'sem data'}\n\n` +
+      `*SIM* para remover ou *cancelar*.`
+    );
+    return next('extintor_remover_confirmar', { ...flowData, extSelecionado: ext });
+  }
+
+  if (stage === 'extintor_remover_confirmar') {
+    if (!/^sim$/i.test(textoNorm)) return cancelar();
+
+    const { extSelecionado } = flowData;
+    const res = await removerExtintor(extSelecionado.rowIndex);
+    if (!res.ok) {
+      await sendMsg(adminPhone, `❌ Erro ao remover extintor: ${res.erro}`);
+    } else {
+      await sendMsg(adminPhone,
+        `✅ Extintor *${extSelecionado.tipo} ${extSelecionado.capacidade} — ${extSelecionado.imovel}* removido.\n` +
+        `_(Histórico mantido na planilha)_`
+      );
     }
     return done();
   }

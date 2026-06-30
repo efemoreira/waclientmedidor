@@ -4,6 +4,8 @@
 
 Este bot foi projetado para ser amigável e fácil de usar, permitindo que usuários monitorem o consumo de água, energia e gás de seus imóveis através do WhatsApp.
 
+Além do monitoramento de consumo, o mesmo bot/número também opera o **Guardião Extintores** — comandos administrativos (Oscar e Felipe) e de self-service para clientes que assinam o serviço de gestão de extintores. Ver seção [🧯 Comandos do Guardião Extintores](#-comandos-do-guardião-extintores) mais abaixo.
+
 ## 🚀 Primeiros Passos
 
 ### Para Novos Usuários
@@ -373,6 +375,116 @@ Quando seu amigo se cadastrar, peça para ele informar seu UID no campo de indic
 ✨ Você ganha benefícios a cada indicação!
 ```
 
+## 🧯 Comandos do Guardião Extintores
+
+Sistema de gestão de extintores embutido no mesmo bot. Comandos admin só funcionam para os números configurados em `ADMIN_VENDAS_PHONE` (Oscar) e `ADMIN_TI_PHONE` (Felipe); os demais são para clientes que assinam o Guardião.
+
+### 👤 Admin — Leads
+
+```
+/leads
+```
+Lista leads pendentes (água + anúncios) com link `wa.me` para contato.
+
+```
+/lead [número] [status]
+```
+Atualiza o status de um lead. Status válidos: `novo`, `contactado`, `fechado`, `perdido`.
+
+```
+/lead fechar [número]
+```
+Marca o lead como `fechado` **e** já inicia o fluxo guiado de cadastro do cliente.
+
+### 👤 Admin — Cadastro de cliente e extintor (fluxo guiado)
+
+```
+/cadastrar
+```
+Inicia o fluxo guiado: nome → telefone → bairro → confirmação. Ao final, pergunta se quer cadastrar extintores na hora.
+
+Modo rápido (uma linha, avançado): `/cadastrar Nome;Telefone;Bairro`
+
+```
+/extintor [número]
+```
+Inicia o fluxo guiado de extintor para o cliente informado: tipo (ABC/CO2/AP/BC) → capacidade → imóvel → setor → vencimento → confirmação. Pergunta se quer adicionar outro ao final.
+
+```
+/extintor editar [número]
+```
+Lista os extintores numerados do cliente e permite editar um campo (vencimento, tipo, capacidade, setor ou imóvel).
+
+```
+/extintor remover [número]
+```
+Lista os extintores numerados do cliente; ao confirmar, remove o extintor escolhido (soft-delete — some das listagens, mas o histórico fica na planilha).
+
+**Output do bot (exemplo do fluxo de remoção):**
+```
+🗑️ *João Silva — extintores:*
+
+1. ABC 6kg — Igreja Central (Entrada) | 30/06/2027 🟢
+2. CO₂ 4kg — Igreja Central (Saída) | 15/03/2026 🔴 VENCIDO
+
+Qual número quer remover?
+
+[admin responde: 2]
+
+🗑️ Confirmar remoção?
+
+🧯 CO₂ 4kg — Igreja Central (Saída)
+📅 Vence: 15/03/2026
+
+SIM para remover ou cancelar.
+
+[admin responde: SIM]
+
+✅ Extintor CO₂ 4kg — Igreja Central removido.
+(Histórico mantido na planilha)
+```
+
+### 👤 Admin — Consultas e relatórios
+
+```
+/ver [número]
+```
+Mostra dados do cliente e seus extintores com status de vencimento: 🔴 vencido, 🟡 vencendo em até 30 dias, 🟢 ok.
+
+```
+/clientes
+```
+Lista paginada (20 por página) de todos os clientes cadastrados.
+
+```
+/relatorio
+```
+Gera na hora o resumo executivo: leads novos/estagnados, clientes ativos, extintores vencendo em 30 dias.
+
+```
+/lembrar
+```
+Dispara manualmente o job de lembretes (mesmo que roda automaticamente todo dia às 10h BRT via cron).
+
+### 🙋 Cliente — Self-service
+
+```
+meus extintores
+extintores
+ver extintores
+```
+Mostra os extintores do próprio cliente com status de vencimento, paginados de 10 em 10.
+
+```
+solicitar visita
+quero visita
+agendar visita
+renovar
+```
+Inicia o fluxo de agendamento: o bot pergunta o melhor dia/horário e notifica o Oscar com a preferência informada.
+
+---
+
 ## 📊 Exemplos de Uso
 
 ### Cenário 1: Usuário com um imóvel monitorando água
@@ -584,8 +696,8 @@ O sistema está preparado para receber facilmente novas funcionalidades:
 
 ### Planejadas
 - [ ] Adicionar novos tipos de monitoramento além de água/energia/gás
-- [ ] Comandos administrativos
-- [ ] Notificações automáticas de consumo alto
+- [x] Comandos administrativos — implementados como o sistema **Guardião Extintores** (ver seção "🧯 Comandos do Guardião Extintores" acima)
+- [x] Notificações automáticas de consumo alto — alerta de consumo anômalo de água gera lead de manutenção automaticamente
 - [ ] Gráficos e relatórios por período
 - [ ] Metas de consumo
 - [ ] Comparação entre imóveis

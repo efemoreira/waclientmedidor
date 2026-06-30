@@ -9,7 +9,7 @@ const PRIVATE_KEY = process.env.GOOGLE_SHEETS_PRIVATE_KEY || '';
 // Colunas da aba extintores:
 // A=id_cliente  B=nome_cliente  C=imovel  D=local_setor  E=tipo  F=capacidade
 // G=data_vencimento  H=data_ultima_inspecao  I=proxima_inspecao
-// J=data_lembrete_vencimento  K=data_lembrete_inspecao  L=confirmado_em
+// J=data_lembrete_vencimento  K=data_lembrete_inspecao  L=confirmado_em  M=removido_em
 
 function normalizarPrivateKey(raw: string): string {
   let key = raw.trim();
@@ -67,6 +67,7 @@ export interface ExtintorRow {
   dataLembreteVencimento: string;
   dataLembreteInspecao: string;
   confirmadoEm: string;
+  removidoEm: string;
 }
 
 export interface ExtintorVencendo extends ExtintorRow {
@@ -77,7 +78,7 @@ export interface ExtintorVencendo extends ExtintorRow {
 async function lerExtintores(sheets: ReturnType<typeof google.sheets>): Promise<ExtintorRow[]> {
   const result = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A:L`,
+    range: `${SHEET_NAME}!A:M`,
     majorDimension: 'ROWS',
     valueRenderOption: 'FORMATTED_VALUE',
   });
@@ -87,6 +88,8 @@ async function lerExtintores(sheets: ReturnType<typeof google.sheets>): Promise<
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i] || [];
     if (!String(r[0] || '').trim()) continue;
+    const removidoEm = String(r[12] || '').trim();
+    if (removidoEm) continue; // soft-delete: ignorar linhas removidas
     extintores.push({
       rowIndex: i + 1,
       idCliente: String(r[0] || '').replace(/\D/g, ''),
@@ -101,6 +104,7 @@ async function lerExtintores(sheets: ReturnType<typeof google.sheets>): Promise<
       dataLembreteVencimento: String(r[9] || ''),
       dataLembreteInspecao: String(r[10] || ''),
       confirmadoEm: String(r[11] || ''),
+      removidoEm,
     });
   }
   return extintores;
@@ -318,7 +322,7 @@ export async function adicionarExtintor(params: AdicionarExtintorParams): Promis
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A:L`,
+      range: `${SHEET_NAME}!A:M`,
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
       requestBody: {
@@ -335,6 +339,7 @@ export async function adicionarExtintor(params: AdicionarExtintorParams): Promis
           '',
           '',
           '',
+          '', // removido_em — vazio na criação
         ]],
       },
     });
@@ -343,6 +348,30 @@ export async function adicionarExtintor(params: AdicionarExtintorParams): Promis
     return { ok: true };
   } catch (erro: any) {
     logger.warn('ExtintoresSheet', `Erro ao adicionar extintor: ${erro?.message || erro}`);
+    return { ok: false, erro: erro?.message };
+  }
+}
+
+/**
+ * Remove logicamente um extintor gravando timestamp na coluna M (removido_em).
+ * A linha permanece na planilha para histórico — não é excluída.
+ */
+export async function removerExtintor(rowIndex: number): Promise<{ ok: boolean; erro?: string }> {
+  const auth = getAuth();
+  if (!auth) return { ok: false, erro: 'Credenciais não configuradas' };
+
+  try {
+    const sheets = google.sheets({ version: 'v4', auth });
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_NAME}!M${rowIndex}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[hoje()]] },
+    });
+    logger.info('ExtintoresSheet', `✅ Extintor removido (soft-delete) na linha ${rowIndex}`);
+    return { ok: true };
+  } catch (erro: any) {
+    logger.warn('ExtintoresSheet', `Erro ao remover extintor: ${erro?.message || erro}`);
     return { ok: false, erro: erro?.message };
   }
 }

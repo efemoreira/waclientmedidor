@@ -12,9 +12,10 @@ Este documento explica detalhadamente o que o código faz, como os módulos se r
 - 🤖 **Bot de conversas** automáticas com comandos extensíveis
 - 📊 **Monitoramento de consumo** de água, energia e gás por imóvel
 - 🏠 **Gestão de imóveis** (cadastro e consulta de propriedades)
+- 🧯 **Guardião Extintores** — mini-CRM operacional: cadastro/edição/remoção guiada de clientes e extintores, pipeline de leads, lembretes de vencimento/inspeção e relatórios para os admins
 - 📤 **Envio em massa** de mensagens a partir de arquivos CSV
 - 💾 **Persistência** de conversas via Upstash Redis ou arquivo `/tmp`
-- 🗂️ **Integração com Google Sheets** para armazenamento de inscrições e leituras
+- 🗂️ **Integração com Google Sheets** para armazenamento de inscrições, leituras, extintores e leads
 
 ---
 
@@ -23,10 +24,13 @@ Este documento explica detalhadamente o que o código faz, como os módulos se r
 ```
 Vercel (serverless functions)
 │
-├── api/webhook.ts          → Recebe eventos do WhatsApp (GET=validação, POST=mensagens)
-├── api/conversations.ts    → CRUD de conversas (listar, buscar, criar, assumir controle)
-├── api/messages.ts         → Envio pontual de mensagens
-├── api/bulk.ts             → Orquestrador de envio em massa
+├── api/webhook.ts            → Recebe eventos do WhatsApp (GET=validação, POST=mensagens)
+├── api/conversations.ts      → CRUD de conversas (listar, buscar, criar, assumir controle)
+├── api/messages.ts           → Envio pontual de mensagens
+├── api/health.ts             → Healthcheck (WhatsApp, Google Sheets, Upstash)
+├── api/cron-vencimentos.ts   → Job diário (10h BRT): lembretes de extintor/inspeção + resumo semanal às segundas
+├── api/cron-resumo-semanal.ts → Endpoint standalone do resumo semanal (debug/chamada manual)
+├── api/bulk.ts              → Orquestrador de envio em massa
 │   ├── handlers/bulk-upload.ts   → Faz upload e valida CSV
 │   ├── handlers/bulk-start.ts    → Inicializa a fila de envio
 │   ├── handlers/bulk-process.ts  → Processa um lote de envio
@@ -50,7 +54,7 @@ src/
 ├── inbox/                  → Lógica de negócio do bot de conversas
 │   ├── ConversationManager.ts  → Orquestrador: processa webhooks e gerencia conversas
 │   ├── GastosManager.ts        → Lógica de leituras de consumo (água/energia/gás)
-│   ├── CommandHandler.ts       → Sistema extensível de comandos do bot
+│   ├── CommandHandler.ts       → Sistema extensível de comandos do bot (água/energia/gás + Guardião)
 │   ├── PropertyManager.ts      → Fluxo de adição de novos imóveis
 │   └── messages.ts             → Textos centralizados de todas as mensagens do bot
 │
@@ -62,13 +66,23 @@ src/
     ├── config.ts               → (ver src/config.ts)
     ├── conversation-storage.ts → Persistência de conversas (Upstash Redis ou /tmp)
     ├── bulk-file-operations.ts → Persistência de fila e status de envio em massa
-    ├── inscritosSheet.ts       → CRUD de inscritos na planilha Google Sheets
+    ├── inscritosSheet.ts       → CRUD de inscritos (clientes + imóveis) na planilha Google Sheets
     ├── predioSheet.ts          → Registro de leituras e acumulados na planilha
     ├── csv-parser.ts           → Parser de CSV com detecção automática de delimitador
     ├── phone-normalizer.ts     → Normalização de números de telefone brasileiros
     ├── whatsapp-validator.ts   → Validação de números no WhatsApp Business API
     ├── text-normalizer.ts      → Normalização de texto (remove acentos, minúsculas)
-    └── validar-numeros.ts      → Re-exporta validarTelefone (backward-compat)
+    ├── validar-numeros.ts      → Re-exporta validarTelefone (backward-compat)
+    │
+    │   ── Guardião Extintores (admin, leads, relatórios) ──
+    ├── extintoresSheet.ts      → CRUD de extintores por imóvel; soft-delete via coluna removido_em
+    ├── adminFlowHandler.ts     → Máquina de estados dos fluxos guiados admin (adminStage)
+    ├── relatoriosAdmin.ts      → Leads estagnados + resumo executivo semanal
+    ├── jobLembrete.ts          → Lógica unificada do job de lembretes (cron diário + comando LEMBRAR)
+    ├── leadsAguaSheet.ts       → Pipeline de leads de manutenção hidráulica (com deduplicação)
+    ├── leadsAnunciosSheet.ts   → Pipeline de leads de anúncios/prospects (com deduplicação)
+    ├── cobrancasSheet.ts       → Registro de cobranças
+    └── anunciosSheet.ts        → Dados de campanhas/anúncios
 ```
 
 ---
@@ -115,6 +129,8 @@ api/webhook.ts
         │
         └─ 7. Comando não reconhecido → COMANDO_NAO_RECONHECIDO
 ```
+
+> **Extensão Guardião:** antes do fluxo acima, `processarWebhook` verifica primeiro `isHuman` (bot silencioso se operador assumiu o controle) e, para números admin (`ADMIN_VENDAS_PHONE`/`ADMIN_TI_PHONE`), trata `adminStage` via `adminFlowHandler.processarAdminFlow()` ou delega ao `CommandHandler` (que pode iniciar um `adminStage`). Números desconhecidos que não são clientes passam primeiro pelo fluxo de captação de lead (`inscricaoStage = 'lead_nome' | 'lead_endereco' | 'lead_qtd_extintores'`) antes do onboarding normal. Ver seção "Módulo Guardião Extintores" abaixo.
 
 ---
 
@@ -216,6 +232,35 @@ Armazena os dados cadastrais de cada usuário/imóvel.
 5. Atualiza `acumulado_mes` (reseta individualmente se o mês mudou)
 6. Remove registros da aba `leituras` com mais de 90 dias
 
+### Aba `extintores` (Guardião)
+
+Um extintor pertence a um cliente (telefone) e um imóvel (nome livre, sem FK formal).
+
+| Coluna | Campo |
+|---|---|
+| A | id_cliente (telefone) |
+| B | nome_cliente |
+| C | imovel |
+| D | local_setor |
+| E | tipo (ABC / CO2 / AP / BC) |
+| F | capacidade |
+| G | data_vencimento |
+| H | data_ultima_inspecao |
+| I | proxima_inspecao |
+| J | data_lembrete_vencimento |
+| K | data_lembrete_inspecao |
+| L | confirmado_em |
+| M | removido_em (soft-delete — linha some das listagens mas fica na planilha) |
+
+### Abas de leads
+
+| Aba | Descrição |
+|---|---|
+| `leads_agua` | Leads de manutenção hidráulica (gerados por `GastosManager` ao detectar consumo anômalo) |
+| `leads_anuncios` | Leads de prospects que chegam pelo WhatsApp sem estar cadastrados |
+
+Ambas têm deduplicação: não criam novo lead se já existir um com status `novo` para o mesmo `id_cliente`.
+
 ---
 
 ## Configuração (`src/config.ts`)
@@ -294,10 +339,13 @@ O orquestrador central. Responsabilidades:
 - Rotear mensagens para os managers corretos
 
 **Estados de uma conversa:**
-- `inscricaoStage` — em qual etapa do onboarding o usuário está
+- `inscricaoStage` — em qual etapa do onboarding o usuário está (inclui captação de lead: `lead_nome`, `lead_endereco`, `lead_qtd_extintores`, `lead_pos_registro`)
 - `inscricaoData` — dados coletados durante o onboarding
+- `leadAnuncioData` — dados coletados durante a captação de lead de anúncio
 - `pendingLeitura` — leitura em andamento aguardando tipo ou ID do imóvel
 - `novoImovel` — fluxo de adição de imóvel em andamento
+- `adminStage` / `adminFlowData` — etapa ativa de um fluxo guiado admin (cadastro/edição/remoção de cliente ou extintor), processado por `adminFlowHandler.ts`
+- `clientStage` / `clientFlowData` — etapa ativa de um fluxo guiado do cliente (ex: `solicitar_visita_horario`)
 - `isHuman` — se `true`, o bot não responde (controle manual ativado)
 
 ### `CommandHandler.ts`
@@ -341,6 +389,51 @@ Centraliza todos os textos do bot. Mensagens são funções (quando precisam de 
 
 ---
 
+## Módulo Guardião Extintores — Admin, Leads e Relatórios
+
+Mini-CRM operacional embutido no mesmo bot. Modelo de dados: **Cliente** (telefone) → 1..N **Imóveis** → 0..N **Extintores** (serviço principal) e 0..N **Leituras** água/energia/gás (add-on).
+
+### `adminFlowHandler.ts` — fluxos guiados admin
+
+Máquina de estados (`processarAdminFlow`) ativada quando `conversa.adminStage` está definido. Stages principais:
+- **Cadastro de cliente:** `cadastrar_cliente_nome → tel → bairro → confirmar`
+- **Cadastro de extintor:** `cadastrar_extintor_tipo → capacidade → imovel → setor → vencimento → confirmar → mais`
+- **Edição de extintor:** `extintor_editar_escolha → campo → valor` (usa `atualizarCampoExtintor`)
+- **Remoção de extintor:** `extintor_remover_escolha → confirmar` (soft-delete via `removerExtintor`, grava `removido_em`)
+
+Cancelável em qualquer etapa com "cancelar". Notifica o cliente automaticamente após cadastro de cliente/extintor (boas-vindas + aviso de vencimento).
+
+### `CommandHandler.ts` — comandos admin e cliente do Guardião
+
+| Comando | Quem | Descrição |
+|---|---|---|
+| `/leads`, `/lead [num] [status]`, `/lead fechar [num]` | admin | Pipeline de leads (água + anúncios), fechamento em cascata para cadastro |
+| `/cadastrar` (guiado ou `Nome;Tel;Bairro`) | admin | Cadastra cliente |
+| `/extintor [num]`, `/extintor editar [num]`, `/extintor remover [num]` | admin | Adiciona, edita ou remove (soft-delete) extintor |
+| `/ver [num]` | admin | Dados do cliente + extintores com status 🔴🟡🟢 |
+| `/clientes` | admin | Lista paginada de clientes |
+| `/relatorio` | admin | Resumo executivo on-demand (`gerarResumoSemanal`) |
+| `/lembrar` | admin | Dispara o job de lembretes manualmente |
+| `/meus extintores` | cliente | Extintores do próprio cliente com status de vencimento |
+| `/solicitar visita` | cliente | Inicia fluxo de agendamento (`clientStage`) |
+
+### `relatoriosAdmin.ts`
+
+- `verificarLeadsEstagnados(dias=2)` — leads com status `novo` sem contato há N dias
+- `gerarResumoSemanal()` — agrega leads, clientes ativos e extintores vencendo em uma mensagem para os admins
+
+### `jobLembrete.ts` + crons
+
+`executarJobLembrete()` é a única rotina de envio proativo (restrição da WhatsApp API: só é possível mandar mensagem proativa para quem interagiu nas últimas 24h):
+1. Busca clientes elegíveis (janela 24h) + extintores vencendo (30d) + inspeções próximas (14d) em paralelo
+2. Clientes na janela recebem nudge + lembretes diretamente
+3. Clientes fora da janela entram no resumo enviado ao Oscar para contato manual
+4. Ao final, chama `verificarLeadsEstagnados(2)` e notifica se houver leads parados
+
+Disparado por: comando `/lembrar` (admin) ou `api/cron-vencimentos.ts` (cron diário, 10h BRT). Esse mesmo endpoint verifica se é segunda-feira (`isSegundaFeiraBRT()`) e, se sim, também dispara `gerarResumoSemanal()` — **o resumo semanal não tem cron próprio** porque o plano Vercel permite apenas 1 cron/dia; `api/cron-resumo-semanal.ts` existe só como endpoint standalone para chamada manual/debug.
+
+---
+
 ## Módulo `bulk` — Envio em Massa
 
 ### `envio-massa.ts` — `EnvioMassa`
@@ -369,6 +462,11 @@ Engine de envio em massa com:
 | `phone-normalizer.ts` | Normaliza números para o formato `55DDNNNNNNNNN` |
 | `whatsapp-validator.ts` | Valida números via endpoint `/contacts` da WhatsApp API |
 | `text-normalizer.ts` | Remove acentos e converte para minúsculas |
+| `extintoresSheet.ts` | CRUD de extintores; soft-delete via `removido_em` |
+| `adminFlowHandler.ts` | Máquina de estados dos fluxos guiados admin |
+| `relatoriosAdmin.ts` | Leads estagnados + resumo executivo semanal |
+| `jobLembrete.ts` | Lógica unificada do job de lembretes proativos |
+| `leadsAguaSheet.ts` / `leadsAnunciosSheet.ts` | Pipeline de leads com deduplicação |
 
 ---
 
@@ -391,11 +489,17 @@ Copie `.env.example` para `.env.local` e preencha os valores:
 | `GOOGLE_ACUMULADO_SEMANA_SHEET_NAME` | ❌ | Aba de acumulado semanal |
 | `GOOGLE_ACUMULADO_MES_SHEET_NAME` | ❌ | Aba de acumulado mensal |
 | `GOOGLE_HISTORICO_RESUMO_SHEET_NAME` | ❌ | Aba de histórico permanente |
+| `GOOGLE_EXTINTORES_SHEET_NAME` | ❌ | Nome da aba de extintores (padrão: `extintores`) |
+| `GOOGLE_LEADS_AGUA_SHEET_NAME` | ❌ | Nome da aba de leads de água (padrão: `leads_agua`) |
+| `GOOGLE_LEADS_ANUNCIOS_SHEET_NAME` | ❌ | Nome da aba de leads de anúncio (padrão: `leads_anuncios`) |
+| `ADMIN_VENDAS_PHONE` | ❌ | Telefone do admin de vendas — Oscar (padrão: `558586999181`) |
+| `ADMIN_TI_PHONE` | ❌ | Telefone do admin técnico — Felipe (padrão: `558597223863`) |
+| `CRON_SECRET` | ✅* | Token do cron diário e do endpoint de resumo semanal (gerado pela Vercel) |
 | `UPSTASH_REDIS_REST_URL` | ❌ | URL do Upstash Redis (persistência em produção) |
 | `UPSTASH_REDIS_REST_TOKEN` | ❌ | Token do Upstash Redis |
 | `APP_PASSWORD` | ❌ | Senha para proteger endpoints de conversas e mensagens |
 
-> ✅* Obrigatório para a funcionalidade do bot de conversas e registro de leituras.
+> ✅* Obrigatório para a funcionalidade do bot de conversas e registro de leituras. `CRON_SECRET` obrigatório apenas para os endpoints de cron.
 
 ---
 
@@ -412,6 +516,9 @@ Copie `.env.example` para `.env.local` e preencha os valores:
 | `POST` | `/api/messages` | Envia uma mensagem pontual |
 | `GET` | `/api/bulk` | Status do envio em massa |
 | `POST` | `/api/bulk` | Ações: `upload`, `start`, `process`, `stop` |
+| `GET` | `/api/health` | Healthcheck (WhatsApp, Google Sheets, Upstash) |
+| `GET` | `/api/cron-vencimentos` | Job diário de lembretes (cron Vercel, `Authorization: Bearer <CRON_SECRET>`) — também dispara resumo semanal às segundas |
+| `GET` | `/api/cron-resumo-semanal` | Resumo executivo semanal — endpoint standalone, sem cron próprio (debug/chamada manual) |
 
 ---
 
@@ -427,6 +534,6 @@ Copie `.env.example` para `.env.local` e preencha os valores:
 
 - [README.md](README.md) — Quick start e configuração básica
 - [COMANDOS.md](COMANDOS.md) — Guia completo de comandos do bot
-- [MELHORIAS.md](MELHORIAS.md) — Histórico de melhorias implementadas
+- [GUARDIAO_PLANO.md](GUARDIAO_PLANO.md) — Contexto de negócio do Guardião Extintores
 - [src/inbox/README.md](src/inbox/README.md) — Documentação do módulo inbox
 - [WhatsApp Business Cloud API](https://developers.facebook.com/docs/whatsapp/cloud-api)

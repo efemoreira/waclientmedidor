@@ -573,10 +573,49 @@ export class CommandHandler {
               `📖 *Comandos de extintor*\n\n` +
               `• */extintor [número]* — adicionar extintor (guiado)\n` +
               `• */extintor editar [número]* — editar extintor existente\n` +
+              `• */extintor remover [número]* — remover extintor (soft-delete)\n` +
               `• */ver [número]* — ver extintores do cliente\n\n` +
               `Ex: /extintor 5585999999999`
             );
             return { handled: true };
+          }
+
+          // /extintor remover [número]
+          if (args.startsWith('remover')) {
+            const numero = args.replace(/^remover\s*/i, '').replace(/\D/g, '');
+            if (!numero) {
+              await ctx.sendMessage(ctx.celular, `Use: /extintor remover [número]`);
+              return { handled: true };
+            }
+            const inscricoes = await listarInscricoesPorCelular(numero);
+            if (!inscricoes.length) {
+              await ctx.sendMessage(ctx.celular, `⚠️ Cliente *${numero}* não encontrado.`);
+              return { handled: true };
+            }
+            const extintores = await listarExtintoresPorCliente(numero);
+            if (!extintores.length) {
+              await ctx.sendMessage(ctx.celular, `⚠️ Nenhum extintor cadastrado para ${inscricoes[0].nome}.`);
+              return { handled: true };
+            }
+            const lista = extintores.map((e, i) => {
+              const status = statusVencimento(e.dataVencimento);
+              return `${i + 1}. ${e.tipo} ${e.capacidade} — ${e.imovel}${e.localSetor ? ` (${e.localSetor})` : ''} | ${e.dataVencimento || 'sem data'} ${status}`;
+            }).join('\n');
+            await ctx.sendMessage(ctx.celular,
+              `🗑️ *${inscricoes[0].nome} — extintores:*\n\n${lista}\n\nQual número quer *remover*?`
+            );
+            return {
+              handled: true,
+              startAdminFlow: 'extintor_remover_escolha',
+              adminFlowData: {
+                telefone: numero,
+                nomeCliente: inscricoes[0].nome,
+                extintores: extintores.map((e) => ({
+                  rowIndex: e.rowIndex, tipo: e.tipo, capacidade: e.capacidade,
+                  imovel: e.imovel, localSetor: e.localSetor, dataVencimento: e.dataVencimento,
+                })),
+              },
+            };
           }
 
           // /extintor editar [número]

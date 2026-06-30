@@ -379,12 +379,17 @@ Quando seu amigo se cadastrar, peça para ele informar seu UID no campo de indic
 
 Sistema de gestão de extintores embutido no mesmo bot. Comandos admin só funcionam para os números configurados em `ADMIN_VENDAS_PHONE` (Oscar) e `ADMIN_TI_PHONE` (Felipe); os demais são para clientes que assinam o Guardião.
 
+> **Padrão de comandos:** todos os comandos admin usam o prefixo `/` (ex: `/leads`, `/ver 5585...`). O bot aceita com ou sem barra — a `/` é removida antes da interpretação. Admins nunca passam pelo fluxo de captura de leads, independente do estado da conversa.
+>
+> **Ajuda:** todos os comandos aceitam `/[comando] ajuda` para explicar suas opções. Admins também podem digitar `/ajuda` para ver o menu completo.
+
 ### 👤 Admin — Leads
 
 ```
 /leads
+/leads ajuda
 ```
-Lista leads pendentes (água + anúncios) com link `wa.me` para contato.
+Lista leads pendentes (água + anúncios) com link `wa.me` para contato. Use `/leads ajuda` para ver todas as opções do comando `/lead`.
 
 ```
 /lead [número] [status]
@@ -458,13 +463,20 @@ Lista paginada (20 por página) de todos os clientes cadastrados.
 
 ```
 /relatorio
+/relatorio ajuda
 ```
-Gera na hora o resumo executivo: leads novos/estagnados, clientes ativos, extintores vencendo em 30 dias.
+Gera na hora o resumo executivo: leads novos/estagnados, clientes ativos, extintores vencendo em 30 dias. Use `/relatorio ajuda` para ver o que inclui.
 
 ```
 /lembrar
+/lembrar ajuda
 ```
-Dispara manualmente o job de lembretes (mesmo que roda automaticamente todo dia às 10h BRT via cron).
+Dispara manualmente o job de lembretes (mesmo que roda automaticamente todo dia às 10h BRT via cron). Use `/lembrar ajuda` para ver o que o job faz.
+
+```
+/ajuda
+```
+Mostra o menu de admin com todos os comandos disponíveis (para admins) ou o menu do cliente (para clientes).
 
 ### 🙋 Cliente — Self-service
 

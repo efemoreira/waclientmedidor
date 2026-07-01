@@ -3,7 +3,9 @@ import type { WebhookPayload, WhatsAppMessage } from '../wabapi/types';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { appendPredioEntry } from '../utils/predioSheet';
-import { verificarInscrito, adicionarInscrito, listarInscricoesPorCelular, type InscricaoInfo } from '../utils/inscritosSheet';
+import { verificarCliente as verificarClientePredios } from '../utils/prediosSheet';
+import { adicionarCliente } from '../utils/clientesSheet';
+import { adicionarPredio, listarPrediosPorCliente, type PredioInfo } from '../utils/prediosSheet';
 import { GastosManager } from './GastosManager';
 import { normalizarTexto, normalizarWaId } from '../utils/text-normalizer';
 import { lerConversas, salvarConversas, lerMeta, salvarMeta } from '../utils/conversation-storage';
@@ -48,22 +50,16 @@ export interface Conversation {
   inscricaoStage?:
     | 'consentimento'
     | 'nome'
+    | 'nome_predio'
     | 'bairro'
-    | 'cep'
-    | 'tipo_imovel'
-    | 'pessoas'
-    | 'uid_indicador'
     | 'lead_nome'
     | 'lead_endereco'
     | 'lead_qtd_extintores'
     | 'lead_pos_registro';
   inscricaoData?: {
     nome?: string;
+    nomePredio?: string;
     bairro?: string;
-    cep?: string;
-    tipo_imovel?: string;
-    pessoas?: string;
-    uid_indicador?: string;
     lgpd_aceite_data?: string;
   };
   leadAnuncioData?: {
@@ -537,7 +533,7 @@ export class ConversationManager {
               }
 
               // Processar como comando normal de admin
-              const inscricoes = await listarInscricoesPorCelular(de);
+              const inscricoes = await listarPrediosPorCliente(de);
               const commandResult = await this.commandHandler.process({
                 celular: de,
                 texto,
@@ -557,7 +553,8 @@ export class ConversationManager {
                 continue;
               }
 
-              // Admin enviou algo que não é comando e não há fluxo ativo — ignora silenciosamente
+              // Admin enviou algo não reconhecido e sem fluxo ativo → orientar
+              await this.enviarMensagem(de, MESSAGES.BOAS_VINDAS_ADMIN);
               continue;
             }
             // ── Fim bypass admin ──────────────────────────────────────────────
@@ -579,63 +576,63 @@ export class ConversationManager {
               continue;
             }
 
-            // Verificar inscrição
+            // Verificar inscrição / onboarding
             if (conversa.inscricaoStage) {
               conversa.inscricaoData = conversa.inscricaoData || {};
               const stage = conversa.inscricaoStage;
 
-              // Mapeamento de salvamento de dados por estágio
+              // Salva a resposta do estágio atual em inscricaoData
               const handlers: Record<string, () => void> = {
                 'nome': () => { conversa.inscricaoData!.nome = texto; },
+                'nome_predio': () => { conversa.inscricaoData!.nomePredio = texto; },
                 'bairro': () => { conversa.inscricaoData!.bairro = texto; },
-                'cep': () => { conversa.inscricaoData!.cep = texto; },
-                'tipo_imovel': () => { conversa.inscricaoData!.tipo_imovel = texto; },
-                'pessoas': () => { conversa.inscricaoData!.pessoas = texto; },
-                'uid_indicador': () => { conversa.inscricaoData!.uid_indicador = texto; },
                 'lead_nome': () => { conversa.leadAnuncioData = conversa.leadAnuncioData || {}; conversa.leadAnuncioData.nome = texto; },
                 'lead_endereco': () => { conversa.leadAnuncioData = conversa.leadAnuncioData || {}; conversa.leadAnuncioData.endereco = texto; },
                 'lead_qtd_extintores': () => { conversa.leadAnuncioData = conversa.leadAnuncioData || {}; conversa.leadAnuncioData.qtdExtintores = texto; },
               };
-
               if (handlers[stage]) handlers[stage]();
 
               const avancar = async (proximo: Conversation['inscricaoStage'], pergunta: string) => {
                 conversa.inscricaoStage = proximo;
-                await this.persistirConversas(); // Salva o progresso no storage
+                await this.persistirConversas();
                 await this.enviarMensagem(de, pergunta);
               };
 
               try {
                 switch (stage) {
                   case 'consentimento': {
-                    const aceitou = /^(sim|concordo|aceito|ok|sim\s*concordo)$/i.test(
-                      normalizarTexto(texto).trim()
-                    );
+                    const aceitou = /^(sim|concordo|aceito|ok|sim\s*concordo)$/i.test(normalizarTexto(texto).trim());
                     if (aceitou) {
-                      conversa.inscricaoData!.lgpd_aceite_data = new Date().toLocaleDateString('pt-BR', {
-                        timeZone: 'America/Sao_Paulo',
-                      });
-                      await avancar('nome', MESSAGES.INSCRICAO_NOME);
+                      conversa.inscricaoData!.lgpd_aceite_data = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+                      // Se nome já está pré-preenchido (veio do lead), pular etapa de nome
+                      if (conversa.inscricaoData!.nome) {
+                        await avancar('nome_predio', MESSAGES.INSCRICAO_NOME_PREDIO);
+                      } else {
+                        await avancar('nome', MESSAGES.INSCRICAO_NOME);
+                      }
                     } else {
                       await this.enviarMensagem(de, MESSAGES.LGPD_CONSENTIMENTO_REPETIR);
                     }
                     break;
                   }
+
                   case 'nome':
-                    await avancar('bairro', MESSAGES.INSCRICAO_BAIRRO);
+                    await avancar('nome_predio', MESSAGES.INSCRICAO_NOME_PREDIO);
                     break;
+
+                  case 'nome_predio':
+                    // Se bairro já está pré-preenchido (veio do lead.endereco), pular
+                    if (conversa.inscricaoData!.bairro) {
+                      await this._finalizarOnboarding(de, conversa);
+                    } else {
+                      await avancar('bairro', MESSAGES.INSCRICAO_BAIRRO);
+                    }
+                    break;
+
                   case 'bairro':
-                    await avancar('cep', MESSAGES.INSCRICAO_CEP);
+                    await this._finalizarOnboarding(de, conversa);
                     break;
-                  case 'cep':
-                    await avancar('tipo_imovel', MESSAGES.INSCRICAO_TIPO_IMOVEL);
-                    break;
-                  case 'tipo_imovel':
-                    await avancar('pessoas', MESSAGES.INSCRICAO_PESSOAS);
-                    break;
-                  case 'pessoas':
-                    await avancar('uid_indicador', MESSAGES.INSCRICAO_UID_INDICADOR);
-                    break;
+
                   case 'lead_nome':
                     await avancar('lead_endereco', MESSAGES.LEAD_PERGUNTA_ENDERECO);
                     break;
@@ -672,13 +669,16 @@ export class ConversationManager {
                   case 'lead_pos_registro': {
                     const aceitouMonitoramento = /^sim$/i.test(normalizarTexto(texto).trim());
                     if (aceitouMonitoramento) {
+                      // Pré-preencher dados do lead no inscricaoData para evitar perguntas repetidas
                       conversa.inscricaoStage = 'consentimento';
-                      conversa.inscricaoData = {};
+                      conversa.inscricaoData = {
+                        nome: conversa.leadAnuncioData?.nome,
+                        bairro: conversa.leadAnuncioData?.endereco, // endereço vira bairro
+                      };
                       conversa.leadAnuncioData = undefined;
                       await this.persistirConversas();
-                      for (const parte of MESSAGES.WELCOME_NEW_USER) {
-                        await this.enviarMensagem(de, parte);
-                      }
+                      // Mostra só a mensagem LGPD (nome já pré-preenchido)
+                      await this.enviarMensagem(de, MESSAGES.LGPD_CONSENTIMENTO_MONITORAMENTO);
                     } else {
                       conversa.inscricaoStage = undefined;
                       conversa.leadAnuncioData = undefined;
@@ -687,36 +687,6 @@ export class ConversationManager {
                     }
                     break;
                   }
-
-                  case 'uid_indicador':
-                    const dados = conversa.inscricaoData;
-                    const resultado = await adicionarInscrito({
-                      nome: dados?.nome || '',
-                      celular: de,
-                      bairro: dados?.bairro || '',
-                      cep: dados?.cep || '', // Enviando CEP
-                      tipo_imovel: dados?.tipo_imovel || '',
-                      pessoas: dados?.pessoas || '',
-                      uid_indicador: dados?.uid_indicador || '',
-                      lgpdAceiteData: dados?.lgpd_aceite_data || '',
-                    });
-
-                    if (resultado.ok) {
-                      conversa.inscricaoStage = undefined;
-                      conversa.inscricaoData = undefined;
-                      await this.persistirConversas();
-                      const partes = MESSAGES.INSCRICAO_SUCESSO(
-                        dados?.nome || '',
-                        resultado.uid || '',
-                        resultado.idImovel || ''
-                      );
-                      for (const parte of partes) {
-                        await this.enviarMensagem(de, parte);
-                      }
-                    } else {
-                      await this.enviarMensagem(de, MESSAGES.INSCRICAO_ERRO(resultado.erro));
-                    }
-                    break;
                 }
               } catch (erro: any) {
                 this.log(`❌ Erro no onboarding: ${erro?.message}`);
@@ -725,17 +695,16 @@ export class ConversationManager {
               continue;
             }
 
-            // Verificar se já é inscrito
-            const verificacao = await verificarInscrito(de);
+            // Verificar se já é cliente (tem pelo menos um prédio cadastrado)
+            const verificacao = await verificarClientePredios(de);
 
-            // Se houve erro de credenciais ou falha na planilha, não iniciar inscrição
             if (verificacao.erro) {
-              this.log(`❌ Erro ao verificar inscrição: ${verificacao.erro}`);
+              this.log(`❌ Erro ao verificar cliente: ${verificacao.erro}`);
               continue;
             }
 
             if (!verificacao.inscrito) {
-              // Frente 3: número desconhecido → capturar lead de extintor antes do onboarding
+              // Número desconhecido → capturar lead de extintor antes do onboarding
               conversa.inscricaoStage = 'lead_nome';
               conversa.leadAnuncioData = {};
               await this.persistirConversas();
@@ -749,11 +718,11 @@ export class ConversationManager {
               continue;
             }
 
-            // Usuário é inscrito - continuar com fluxo normal
-            this.log(`✅ Usuário inscrito: ${verificacao.nome} (${verificacao.uid})`);
+            // Cliente cadastrado — continuar com fluxo normal
+            this.log(`✅ Cliente: ${verificacao.nome} (${verificacao.uid})`);
 
             const textoNormalizado = normalizarTexto(texto).trim();
-            const inscricoes = await listarInscricoesPorCelular(de);
+            const inscricoes = await listarPrediosPorCliente(de);
 
             // Frente 1: detectar SIM como confirmação de agendamento de extintor
             if (/^sim$/i.test(textoNormalizado)) {
@@ -951,11 +920,42 @@ export class ConversationManager {
   }
 
   /**
+   * Finaliza o onboarding após coleta de bairro: salva cliente + prédio, limpa estado e envia confirmação.
+   */
+  private async _finalizarOnboarding(de: string, conversa: Conversation): Promise<void> {
+    const dados = conversa.inscricaoData || {};
+    const [resCliente, resPredio] = await Promise.all([
+      adicionarCliente({
+        celular: de,
+        nome: dados.nome || '',
+        lgpdAceiteData: dados.lgpd_aceite_data || '',
+      }),
+      adicionarPredio({
+        idCliente: de,
+        nomePredio: dados.nomePredio || dados.nome || '',
+        bairro: dados.bairro || '',
+      }),
+    ]);
+
+    if (resCliente.ok && resPredio.ok) {
+      conversa.inscricaoStage = undefined;
+      conversa.inscricaoData = undefined;
+      await this.persistirConversas();
+      const partes = MESSAGES.INSCRICAO_SUCESSO(dados.nome || '', resPredio.idImovel || '');
+      for (const parte of partes) {
+        await this.enviarMensagem(de, parte);
+      }
+    } else {
+      await this.enviarMensagem(de, MESSAGES.INSCRICAO_ERRO(resCliente.erro || resPredio.erro));
+    }
+  }
+
+  /**
    * Anexa um lembrete curto à resposta atual quando alguma leitura monitorada
    * está muito atrasada. Nunca envia nada por conta própria — só aproveita uma
    * resposta que já seria enviada por ter o usuário mandado uma mensagem.
    */
-  private async enviarNudgeSeNecessario(de: string, inscricoes: InscricaoInfo[]): Promise<void> {
+  private async enviarNudgeSeNecessario(de: string, inscricoes: PredioInfo[]): Promise<void> {
     try {
       const nudge = await this.gastosManager.obterNudgeAtraso(inscricoes);
       if (nudge) {

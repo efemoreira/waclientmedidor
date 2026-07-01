@@ -68,14 +68,18 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       const abas = result.data.sheets?.map((s) => s.properties?.title) || [];
       checks.sheets.connectionTest = 'OK ✅';
       checks.sheets.abas = abas;
-      checks.sheets.inscritosSheetName = process.env.GOOGLE_INSCRITOS_SHEET_NAME || 'Inscritos';
+      checks.sheets.clientesSheetName = process.env.GOOGLE_CLIENTES_SHEET_NAME || 'clientes';
+      checks.sheets.prediosSheetName = process.env.GOOGLE_PREDIOS_SHEET_NAME || 'predios';
+      checks.sheets.extintoresSheetName = process.env.GOOGLE_EXTINTORES_SHEET_NAME || 'extintores';
       checks.sheets.leiturasSheetName = process.env.GOOGLE_LEITURAS_SHEET_NAME || process.env.GOOGLE_SHEET_NAME || 'leituras';
       checks.sheets.acumuladoSemanaSheetName = process.env.GOOGLE_ACUMULADO_SEMANA_SHEET_NAME || 'acumulado_semana';
       checks.sheets.acumuladoMesSheetName = process.env.GOOGLE_ACUMULADO_MES_SHEET_NAME || 'acumulado_mes';
       checks.sheets.historicoResumoSheetName = process.env.GOOGLE_HISTORICO_RESUMO_SHEET_NAME || 'historico_resumo';
 
       const abasFaltando = [
-        checks.sheets.inscritosSheetName,
+        checks.sheets.clientesSheetName,
+        checks.sheets.prediosSheetName,
+        checks.sheets.extintoresSheetName,
         checks.sheets.leiturasSheetName,
         checks.sheets.acumuladoSemanaSheetName,
         checks.sheets.acumuladoMesSheetName,

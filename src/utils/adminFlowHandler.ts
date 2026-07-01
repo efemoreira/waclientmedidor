@@ -8,7 +8,8 @@
  * Para cancelar em qualquer etapa: enviar "cancelar".
  */
 
-import { adicionarInscrito, listarInscricoesPorCelular } from './inscritosSheet';
+import { adicionarCliente } from './clientesSheet';
+import { adicionarPredio, listarPrediosPorCliente } from './prediosSheet';
 import { adicionarExtintor, listarExtintoresPorCliente, atualizarCampoExtintor, removerExtintor } from './extintoresSheet';
 import { logger } from './logger';
 
@@ -58,10 +59,9 @@ export async function processarAdminFlow(
       await sendMsg(adminPhone, '⚠️ Nome muito curto. Digite o nome completo ou *cancelar*.');
       return next(stage, flowData);
     }
-    // Se telefone já está pré-preenchido (vindo de /lead fechar), pular etapa
     if (flowData.telefone) {
-      await sendMsg(adminPhone, `📍 Bairro de *${nome}*? (ou *pular*)`);
-      return next('cadastrar_cliente_bairro', { ...flowData, nome });
+      await sendMsg(adminPhone, `🏠 Nome deste prédio/imóvel? (ex: Igreja Central, Empresa, Loja)`);
+      return next('cadastrar_cliente_nome_predio', { ...flowData, nome });
     }
     await sendMsg(adminPhone, `📱 Telefone do cliente (com DDD, só números)?`);
     return next('cadastrar_cliente_tel', { ...flowData, nome });
@@ -73,16 +73,27 @@ export async function processarAdminFlow(
       await sendMsg(adminPhone, '⚠️ Telefone inválido. Digite com DDD (ex: 85999999999) ou *cancelar*.');
       return next(stage, flowData);
     }
+    await sendMsg(adminPhone, `🏠 Nome deste prédio/imóvel? (ex: Igreja Central, Empresa, Loja)`);
+    return next('cadastrar_cliente_nome_predio', { ...flowData, telefone: tel });
+  }
+
+  if (stage === 'cadastrar_cliente_nome_predio') {
+    const nomePredio = texto.trim();
+    if (!nomePredio) {
+      await sendMsg(adminPhone, `⚠️ Informe o nome do imóvel ou *cancelar*.`);
+      return next(stage, flowData);
+    }
     await sendMsg(adminPhone, `📍 Bairro? (ou *pular*)`);
-    return next('cadastrar_cliente_bairro', { ...flowData, telefone: tel });
+    return next('cadastrar_cliente_bairro', { ...flowData, nomePredio });
   }
 
   if (stage === 'cadastrar_cliente_bairro') {
     const bairro = textoNorm === 'pular' ? '' : texto.trim();
-    const { nome, telefone } = flowData;
+    const { nome, telefone, nomePredio } = flowData;
     await sendMsg(adminPhone,
       `📋 *Confirmar cadastro?*\n\n` +
-      `👤 ${nome}\n📱 https://wa.me/${telefone}\n📍 ${bairro || 'bairro não informado'}\n\n` +
+      `👤 ${nome}\n📱 https://wa.me/${telefone}\n` +
+      `🏠 ${nomePredio}\n📍 ${bairro || 'bairro não informado'}\n\n` +
       `*SIM* para cadastrar ou *cancelar*.`
     );
     return next('cadastrar_cliente_confirmar', { ...flowData, bairro });
@@ -91,43 +102,87 @@ export async function processarAdminFlow(
   if (stage === 'cadastrar_cliente_confirmar') {
     if (!/^sim$/i.test(textoNorm)) return cancelar();
 
-    const { nome, telefone, bairro } = flowData;
+    const { nome, telefone, nomePredio, bairro } = flowData;
     const lgpdData = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-    const res = await adicionarInscrito({ nome, celular: telefone, bairro: bairro || '', lgpdAceiteData: lgpdData });
 
-    if (!res.ok) {
-      await sendMsg(adminPhone, `❌ Erro ao cadastrar: ${res.erro}`);
+    const [resCliente, resPredio] = await Promise.all([
+      adicionarCliente({ celular: telefone, nome, lgpdAceiteData: lgpdData }),
+      adicionarPredio({ idCliente: telefone, nomePredio: nomePredio || nome, bairro: bairro || '' }),
+    ]);
+
+    if (!resCliente.ok || !resPredio.ok) {
+      await sendMsg(adminPhone, `❌ Erro ao cadastrar: ${resCliente.erro || resPredio.erro}`);
       return done();
     }
 
     await sendMsg(adminPhone,
-      `✅ *Cliente cadastrado!*\n👤 ${nome}\n📱 https://wa.me/${telefone}\n📍 ${bairro || ''}\n🆔 ${res.uid}\n🏠 ${res.idImovel}`
+      `✅ *Cliente cadastrado!*\n👤 ${nome}\n📱 https://wa.me/${telefone}\n🏠 ${nomePredio}\n📍 ${bairro || ''}\n🆔 ${resPredio.idImovel}`
     );
 
-    // Notifica o outro admin
     if (adminPhone.replace(/\D/g, '') !== ADMIN_VENDAS_PHONE) {
       sendMsg(ADMIN_VENDAS_PHONE, `🆕 *Novo cliente*\n👤 ${nome}\n📱 https://wa.me/${telefone}`).catch(() => {});
     }
 
-    // Boas-vindas ao cliente
     sendMsg(telefone,
       `Olá, ${nome}! 👋 Seu cadastro no Guardião foi criado. Em breve entraremos em contato. Qualquer dúvida é só chamar aqui!`
     ).catch(() => {});
 
     await sendMsg(adminPhone, `Quer cadastrar os extintores de *${nome}* agora? (*SIM* ou *não*)`);
-    return next('cadastrar_cliente_extintor_opcao', { ...flowData, uid: res.uid, idImovel: res.idImovel });
+    return next('cadastrar_cliente_extintor_opcao', { ...flowData, idImovel: resPredio.idImovel });
   }
 
   if (stage === 'cadastrar_cliente_extintor_opcao') {
     if (/^sim$/i.test(textoNorm)) {
       await sendMsg(adminPhone, `🧯 Tipo do extintor? (ABC / CO2 / AP / BC)`);
-      return next('cadastrar_extintor_tipo', { telefone: flowData.telefone, nomeCliente: flowData.nome });
+      return next('cadastrar_extintor_tipo', {
+        telefone: flowData.telefone,
+        nomeCliente: flowData.nome,
+        idImovel: flowData.idImovel,
+        imovel: flowData.nomePredio,
+      });
     }
     await sendMsg(adminPhone, `✅ Pronto! Use */extintor ${flowData.telefone}* para cadastrar extintores depois.`);
     return done();
   }
 
   // ─── CADASTRAR EXTINTOR ────────────────────────────────────────────────────
+
+  // Stage de seleção de prédio existente (lista numerada) antes de entrar no fluxo normal
+  if (stage === 'cadastrar_extintor_imovel_escolha') {
+    const predios: Array<{ idImovel: string; nomePredio: string; bairro: string }> = flowData.predios || [];
+    const escolha = texto.trim();
+    const idx = parseInt(textoNorm, 10) - 1;
+
+    if (!isNaN(idx) && idx >= 0 && idx < predios.length) {
+      // Escolheu pelo número → usa idImovel e nome do prédio existente
+      const selecionado = predios[idx];
+      await sendMsg(adminPhone, `🧯 Tipo do extintor de *${selecionado.nomePredio}*? (ABC / CO2 / AP / BC)`);
+      return next('cadastrar_extintor_tipo', {
+        telefone: flowData.telefone,
+        nomeCliente: flowData.nomeCliente,
+        imovel: selecionado.nomePredio,
+        idImovel: selecionado.idImovel,
+      });
+    }
+
+    // Digitou nome de novo prédio → cria prédio e continua
+    if (escolha.length >= 2) {
+      const resPredio = await adicionarPredio({
+        idCliente: flowData.telefone,
+        nomePredio: escolha,
+      });
+      await sendMsg(adminPhone, `🧯 Tipo do extintor de *${escolha}*? (ABC / CO2 / AP / BC)`);
+      return next('cadastrar_extintor_tipo', {
+        telefone: flowData.telefone,
+        nomeCliente: flowData.nomeCliente,
+        imovel: escolha,
+        idImovel: resPredio.idImovel || '',
+      });
+    }
+
+    await sendMsg(adminPhone, `⚠️ Selecione o número do prédio ou digite o nome de um novo local.`);
+    return next(stage, flowData);
+  }
 
   if (stage === 'cadastrar_extintor_tipo') {
     const tipo = normalizarTipo(texto);
@@ -145,8 +200,8 @@ export async function processarAdminFlow(
       await sendMsg(adminPhone, `⚠️ Informe a capacidade (ex: 6kg) ou *cancelar*.`);
       return next(stage, flowData);
     }
-    await sendMsg(adminPhone, `🏠 Imóvel? (ex: Igreja Central)`);
-    return next('cadastrar_extintor_imovel', { ...flowData, capacidade });
+    await sendMsg(adminPhone, `📍 Setor/local dentro do imóvel? (ou *pular*)`);
+    return next('cadastrar_extintor_setor', { ...flowData, capacidade });
   }
 
   if (stage === 'cadastrar_extintor_imovel') {
@@ -185,14 +240,15 @@ export async function processarAdminFlow(
 
     let nome = nomeCliente;
     if (!nome) {
-      const inscricoes = await listarInscricoesPorCelular(telefone);
-      nome = inscricoes[0]?.nome || '';
+      const predios = await listarPrediosPorCliente(telefone);
+      nome = predios[0]?.nome || '';
     }
 
     const res = await adicionarExtintor({
       idCliente: telefone,
       nomeCliente: nome,
       imovel,
+      idImovel: flowData.idImovel || '',
       localSetor: setor || '',
       tipo,
       capacidade,
@@ -222,8 +278,24 @@ export async function processarAdminFlow(
 
   if (stage === 'cadastrar_extintor_mais') {
     if (/^sim$/i.test(textoNorm)) {
+      const predios = await listarPrediosPorCliente(flowData.telefone);
+      if (predios.length > 1) {
+        const lista = predios.map((p, i) => `${i + 1}. ${p.nomePredio || p.idImovel}${p.bairro ? ` — ${p.bairro}` : ''}`).join('\n');
+        await sendMsg(adminPhone, `🏠 Qual prédio?\n\n${lista}\n\nDigite o número ou o nome de um novo local.`);
+        return next('cadastrar_extintor_imovel_escolha', {
+          telefone: flowData.telefone,
+          nomeCliente: flowData.nomeCliente,
+          predios: predios.map((p) => ({ idImovel: p.idImovel, nomePredio: p.nomePredio, bairro: p.bairro })),
+        });
+      }
+      // Cliente tem só um prédio — usar o mesmo
       await sendMsg(adminPhone, `🧯 Tipo do próximo extintor? (ABC / CO2 / AP / BC)`);
-      return next('cadastrar_extintor_tipo', { telefone: flowData.telefone, nomeCliente: flowData.nomeCliente });
+      return next('cadastrar_extintor_tipo', {
+        telefone: flowData.telefone,
+        nomeCliente: flowData.nomeCliente,
+        imovel: predios[0]?.nomePredio || flowData.imovel,
+        idImovel: predios[0]?.idImovel || flowData.idImovel,
+      });
     }
     await sendMsg(adminPhone, `✅ Pronto! Todos os extintores foram cadastrados.`);
     return done();

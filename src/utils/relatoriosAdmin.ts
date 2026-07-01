@@ -5,7 +5,7 @@
 
 import { listarLeadsAgua } from './leadsAguaSheet';
 import { listarLeadsAnuncios } from './leadsAnunciosSheet';
-import { listarTodosClientes } from './inscritosSheet';
+import { listarTodosClientes } from './clientesSheet';
 import { listarExtintoresVencendoEm } from './extintoresSheet';
 import { logger } from './logger';
 

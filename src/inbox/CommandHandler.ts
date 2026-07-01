@@ -12,7 +12,10 @@ import { executarJobLembrete } from '../utils/jobLembrete';
 import { listarLeadsAgua, atualizarStatusLeadAgua } from '../utils/leadsAguaSheet';
 import { listarLeadsAnuncios, atualizarStatusLeadAnuncio } from '../utils/leadsAnunciosSheet';
 import { listarExtintoresPorCliente, adicionarExtintor } from '../utils/extintoresSheet';
-import { listarInscricoesPorCelular, adicionarInscrito, listarTodosClientes } from '../utils/inscritosSheet';
+import { listarPrediosPorCliente } from '../utils/prediosSheet';
+import { listarTodosClientes } from '../utils/clientesSheet';
+import { adicionarCliente } from '../utils/clientesSheet';
+import { adicionarPredio } from '../utils/prediosSheet';
 import { gerarResumoSemanal } from '../utils/relatoriosAdmin';
 
 const ADMIN_PHONES = new Set([
@@ -154,7 +157,7 @@ export class CommandHandler {
         description: 'Listar todos os comandos',
         aliases: ['todos comandos', 'opcoes'],
         handler: async (ctx: CommandContext) => {
-          await ctx.sendMessage(ctx.celular, MESSAGES.HELP_COMMANDS);
+          await ctx.sendMessage(ctx.celular, isAdmin(ctx.celular) ? MESSAGES.MENU_ADMIN : MESSAGES.HELP_COMMANDS);
           return { handled: true };
         },
       },
@@ -368,7 +371,7 @@ export class CommandHandler {
                 await ctx.sendMessage(ctx.celular, `Use: /extintor [número] para fluxo guiado\nou /cadastrar extintor Tel;Tipo;Cap;Imóvel`);
                 return { handled: true };
               }
-              const inscricoes = await listarInscricoesPorCelular(telefoneLimpo);
+              const inscricoes = await listarPrediosPorCliente(telefoneLimpo);
               if (!inscricoes.length) {
                 await ctx.sendMessage(ctx.celular, `⚠️ Cliente *${telefoneLimpo}* não cadastrado. Cadastre primeiro com */cadastrar*.`);
                 return { handled: true };
@@ -394,7 +397,7 @@ export class CommandHandler {
               return { handled: true };
             }
 
-            const inscricoes = await listarInscricoesPorCelular(telefoneLimpo);
+            const inscricoes = await listarPrediosPorCliente(telefoneLimpo);
             if (!inscricoes.length) {
               await ctx.sendMessage(ctx.celular, `⚠️ Cliente *${telefoneLimpo}* não encontrado. Cadastre primeiro com */cadastrar*.`);
               return { handled: true };
@@ -442,14 +445,11 @@ export class CommandHandler {
           }
 
           const lgpdData = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-          const res = await adicionarInscrito({
-            nome,
-            celular: telefoneLimpo,
-            bairro: bairro || '',
-            cep: cep || '',
-            tipo_imovel: tipoImovel || '',
-            lgpdAceiteData: lgpdData,
-          });
+          const [resCliente, resPredio] = await Promise.all([
+            adicionarCliente({ celular: telefoneLimpo, nome, lgpdAceiteData: lgpdData }),
+            adicionarPredio({ idCliente: telefoneLimpo, nomePredio: bairro || nome, bairro: bairro || '' }),
+          ]);
+          const res = { ok: resCliente.ok && resPredio.ok, uid: resPredio.uid, idImovel: resPredio.idImovel, erro: resCliente.erro || resPredio.erro };
 
           if (!res.ok) {
             await ctx.sendMessage(ctx.celular, `❌ Erro ao cadastrar cliente: ${res.erro}`);
@@ -457,7 +457,7 @@ export class CommandHandler {
             await ctx.sendMessage(ctx.celular,
               `✅ *Cliente cadastrado*\n` +
               `👤 ${nome}\n📱 https://wa.me/${telefoneLimpo}\n` +
-              `📍 ${bairro || 'não informado'}\n🆔 ${res.uid}\n🏠 ${res.idImovel}`
+              `📍 ${bairro || 'não informado'}\n🏠 ${res.idImovel}`
             );
             if (ctx.celular.replace(/\D/g, '') !== ADMIN_VENDAS_PHONE.replace(/\D/g, '')) {
               await ctx.sendMessage(ADMIN_VENDAS_PHONE,
@@ -498,7 +498,7 @@ export class CommandHandler {
           await ctx.sendMessage(ctx.celular, '⏳ Buscando dados...');
 
           const [inscricoes, extintores] = await Promise.all([
-            listarInscricoesPorCelular(numero),
+            listarPrediosPorCliente(numero),
             listarExtintoresPorCliente(numero),
           ]);
 
@@ -603,7 +603,7 @@ export class CommandHandler {
           const PAGE = 20;
           const exibidos = clientes.slice(0, PAGE);
           const linhas = exibidos.map((c) =>
-            `• ${c.nome || 'sem nome'} — https://wa.me/${c.celular}${c.bairro ? ` (${c.bairro})` : ''}`
+            `• ${c.nome || 'sem nome'} — https://wa.me/${c.idCliente}`
           );
 
           let msg = `👥 *Clientes (${clientes.length})*\n\n${linhas.join('\n')}`;
@@ -645,7 +645,7 @@ export class CommandHandler {
               await ctx.sendMessage(ctx.celular, `Use: /extintor remover [número]`);
               return { handled: true };
             }
-            const inscricoes = await listarInscricoesPorCelular(numero);
+            const inscricoes = await listarPrediosPorCliente(numero);
             if (!inscricoes.length) {
               await ctx.sendMessage(ctx.celular, `⚠️ Cliente *${numero}* não encontrado.`);
               return { handled: true };
@@ -683,7 +683,7 @@ export class CommandHandler {
               await ctx.sendMessage(ctx.celular, `Use: /extintor editar [número]`);
               return { handled: true };
             }
-            const inscricoes = await listarInscricoesPorCelular(numero);
+            const inscricoes = await listarPrediosPorCliente(numero);
             if (!inscricoes.length) {
               await ctx.sendMessage(ctx.celular, `⚠️ Cliente *${numero}* não encontrado.`);
               return { handled: true };
@@ -721,17 +721,36 @@ export class CommandHandler {
             return { handled: true };
           }
 
-          const inscricoes = await listarInscricoesPorCelular(numero);
-          if (!inscricoes.length) {
+          const predios = await listarPrediosPorCliente(numero);
+          if (!predios.length) {
             await ctx.sendMessage(ctx.celular, `⚠️ Cliente *${numero}* não encontrado. Cadastre primeiro com */cadastrar*.`);
             return { handled: true };
           }
 
-          await ctx.sendMessage(ctx.celular, `🧯 Tipo do extintor de *${inscricoes[0].nome}*? (ABC / CO2 / AP / BC)`);
+          const nomeCliente = predios[0].nome;
+          if (predios.length === 1) {
+            // Único prédio → pular seleção e ir direto para tipo
+            await ctx.sendMessage(ctx.celular, `🧯 Tipo do extintor de *${nomeCliente}* em *${predios[0].nomePredio}*? (ABC / CO2 / AP / BC)`);
+            return {
+              handled: true,
+              startAdminFlow: 'cadastrar_extintor_tipo',
+              adminFlowData: { telefone: numero, nomeCliente, imovel: predios[0].nomePredio, idImovel: predios[0].idImovel },
+            };
+          }
+
+          // Múltiplos prédios → mostrar lista de seleção
+          const lista = predios.map((p, i) => `${i + 1}. ${p.nomePredio || p.idImovel}${p.bairro ? ` — ${p.bairro}` : ''}`).join('\n');
+          await ctx.sendMessage(ctx.celular,
+            `🏠 *Prédios de ${nomeCliente}:*\n\n${lista}\n\nQual número? (ou nome de novo prédio)`
+          );
           return {
             handled: true,
-            startAdminFlow: 'cadastrar_extintor_tipo',
-            adminFlowData: { telefone: numero, nomeCliente: inscricoes[0].nome },
+            startAdminFlow: 'cadastrar_extintor_imovel_escolha',
+            adminFlowData: {
+              telefone: numero,
+              nomeCliente,
+              predios: predios.map((p) => ({ idImovel: p.idImovel, nomePredio: p.nomePredio, bairro: p.bairro })),
+            },
           };
         },
       },

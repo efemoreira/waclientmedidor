@@ -10,6 +10,7 @@ const PRIVATE_KEY = process.env.GOOGLE_SHEETS_PRIVATE_KEY || '';
 // A=id_cliente  B=nome_cliente  C=imovel  D=local_setor  E=tipo  F=capacidade
 // G=data_vencimento  H=data_ultima_inspecao  I=proxima_inspecao
 // J=data_lembrete_vencimento  K=data_lembrete_inspecao  L=confirmado_em  M=removido_em
+// N=id_imovel (FK → predios.id_imovel)
 
 function normalizarPrivateKey(raw: string): string {
   let key = raw.trim();
@@ -68,6 +69,7 @@ export interface ExtintorRow {
   dataLembreteInspecao: string;
   confirmadoEm: string;
   removidoEm: string;
+  idImovel: string; // FK → predios.id_imovel (coluna N)
 }
 
 export interface ExtintorVencendo extends ExtintorRow {
@@ -78,7 +80,7 @@ export interface ExtintorVencendo extends ExtintorRow {
 async function lerExtintores(sheets: ReturnType<typeof google.sheets>): Promise<ExtintorRow[]> {
   const result = await sheets.spreadsheets.values.get({
     spreadsheetId: SHEET_ID,
-    range: `${SHEET_NAME}!A:M`,
+    range: `${SHEET_NAME}!A:N`,
     majorDimension: 'ROWS',
     valueRenderOption: 'FORMATTED_VALUE',
   });
@@ -105,6 +107,7 @@ async function lerExtintores(sheets: ReturnType<typeof google.sheets>): Promise<
       dataLembreteInspecao: String(r[10] || ''),
       confirmadoEm: String(r[11] || ''),
       removidoEm,
+      idImovel: String(r[13] || ''),
     });
   }
   return extintores;
@@ -280,6 +283,22 @@ export async function atualizarCampoExtintor(
 }
 
 /**
+ * Lista todos os extintores de um prédio específico (via FK id_imovel).
+ */
+export async function listarExtintoresPorImovel(idImovel: string): Promise<ExtintorRow[]> {
+  const auth = getAuth();
+  if (!auth) return [];
+  try {
+    const sheets = google.sheets({ version: 'v4', auth });
+    const todos = await lerExtintores(sheets);
+    return todos.filter((e) => e.idImovel === idImovel);
+  } catch (erro: any) {
+    logger.warn('ExtintoresSheet', `Erro ao listar extintores por imóvel: ${erro?.message || erro}`);
+    return [];
+  }
+}
+
+/**
  * Lista todos os extintores de um cliente específico.
  */
 export async function listarExtintoresPorCliente(idCliente: string): Promise<ExtintorRow[]> {
@@ -301,6 +320,7 @@ export interface AdicionarExtintorParams {
   idCliente: string;
   nomeCliente?: string;
   imovel: string;
+  idImovel?: string; // FK → predios.id_imovel (preferencial se disponível)
   localSetor?: string;
   tipo: string;
   capacidade: string;
@@ -322,7 +342,7 @@ export async function adicionarExtintor(params: AdicionarExtintorParams): Promis
 
     await sheets.spreadsheets.values.append({
       spreadsheetId: SHEET_ID,
-      range: `${SHEET_NAME}!A:M`,
+      range: `${SHEET_NAME}!A:N`,
       valueInputOption: 'USER_ENTERED',
       insertDataOption: 'INSERT_ROWS',
       requestBody: {
@@ -336,10 +356,11 @@ export async function adicionarExtintor(params: AdicionarExtintorParams): Promis
           params.dataVencimento,
           params.dataUltimaInspecao || '',
           params.proximaInspecao || '',
-          '',
-          '',
-          '',
-          '', // removido_em — vazio na criação
+          '', // data_lembrete_vencimento
+          '', // data_lembrete_inspecao
+          '', // confirmado_em
+          '', // removido_em
+          params.idImovel || '', // id_imovel FK (coluna N)
         ]],
       },
     });

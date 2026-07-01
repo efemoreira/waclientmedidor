@@ -4,7 +4,7 @@
  */
 
 import { appendPredioEntry, obterUltimaLeitura, getWeekOfYear, obterInsightsConsumo } from '../utils/predioSheet';
-import { listarInscricoesPorCelular, atualizarUltimoRelatorio, atualizarUltimaLeitura } from '../utils/inscritosSheet';
+import { listarPrediosPorCliente, atualizarUltimoRelatorio, atualizarUltimaLeitura } from '../utils/prediosSheet';
 import { jaEnviadoRelatorio, registrarRelatorioEnviado } from '../utils/relatoriosSheet';
 import { obterAnuncioPorBairro, registrarImpressao } from '../utils/anunciosSheet';
 import { registrarLeadAgua } from '../utils/leadsAguaSheet';
@@ -301,7 +301,7 @@ export class GastosManager {
    */
   async obterInscricoes(celular: string): Promise<InscritoDados[]> {
     try {
-      return await listarInscricoesPorCelular(celular);
+      return await listarPrediosPorCliente(celular);
     } catch (erro) {
       return [];
     }

@@ -17,9 +17,13 @@ Usamos seu nome, telefone, bairro, CEP e as leituras de consumo enviadas apenas 
 
   LGPD_CONSENTIMENTO_REPETIR: `🔒 Para continuar, precisamos do seu consentimento explícito.
 
-Usamos seu nome, telefone, bairro, CEP e leituras de consumo apenas para prestar este serviço.
+Usamos seu nome, telefone, bairro e leituras de consumo apenas para prestar este serviço.
 
 Digite *SIM* para concordar e iniciar seu cadastro.`,
+
+  LGPD_CONSENTIMENTO_MONITORAMENTO: `🔒 Para monitorar seu consumo, preciso guardar seu nome, telefone e dados do imóvel (LGPD).
+
+Digite *SIM* para concordar e continuar.`,
 
   WELCOME_REGISTERED_USER: (nome: string) => `👋 Olá, ${nome}!
 
@@ -68,6 +72,8 @@ Você também pode enviar sua leitura diretamente (ex: "456" ou "energia 456").`
 • */lembrar* — disparar job de lembretes
 
 _Use /[comando] ajuda para detalhes de cada um._`,
+
+  BOAS_VINDAS_ADMIN: `👋 Bem-vindo! Escreva um comando ou */ajuda* para ver as opções.`,
 
   // Mensagens de ajuda
   HELP_ENVIAR_LEITURA: `💧 Como enviar leituras
@@ -297,44 +303,24 @@ ${params.previsaoConta}`;
     return msg;
   },
 
-  // Mensagens de inscrição
+  // Mensagens de inscrição (onboarding simplificado — 3 perguntas)
   INSCRICAO_NOME: `📝 Vamos começar seu cadastro.
 
 Por favor, me envie seu nome completo.`,
 
-  INSCRICAO_BAIRRO: `📍 Perfeito.
+  INSCRICAO_NOME_PREDIO: `🏠 Como você chama este imóvel/local?
 
-Agora me diga qual é o seu bairro.`,
+(Ex: Casa, Igreja Central, Empresa, Apt 301)`,
 
-  INSCRICAO_CEP: `📮 Ótimo.
+  INSCRICAO_BAIRRO: `📍 Qual é o bairro?`,
 
-Qual é o CEP do seu imóvel?`,
+  INSCRICAO_SUCESSO: (nome: string, idImovel: string) => [
+    `✅ Cadastro realizado com sucesso! 🎉 Bem-vindo(a), ${nome}!`,
+    `🏠 Imóvel: ${idImovel}
 
-  INSCRICAO_TIPO_IMOVEL: `🏠 Entendi.
+Agora é só enviar sua leitura. Ex: *agua 123*
 
-Qual é o tipo de imóvel?
-(Exemplos: casa, apartamento, comercial, etc.)`,
-
-  INSCRICAO_PESSOAS: `👥 Legal.
-
-Quantas pessoas moram no imóvel?`,
-
-  INSCRICAO_UID_INDICADOR: `🎁 Quase lá.
-
-Você tem um UID de indicador?
-Se sim, informe agora.
-Se não, pode responder "não" ou "nao".`,
-
-  INSCRICAO_SUCESSO: (nome: string, uid: string, idImovel: string) => [
-    `✅ Inscrição realizada com sucesso!
-
-🎉 Bem-vindo(a), ${nome}!`,
-    `📋 Seus dados:
-UID: ${uid}
-ID do imóvel: ${idImovel}`,
-    `🚀 Agora você pode começar a enviar suas leituras.
-
-Digite *ajuda* para ver todas as opções disponíveis.`,
+Digite *ajuda* para ver as opções disponíveis.`,
   ],
 
   INSCRICAO_ERRO: (erro?: string) =>

@@ -9,7 +9,7 @@
  *    enviado aos admins, para follow-up manual
  */
 
-import { listarElegiveisLembrete } from './inscritosSheet';
+import { listarElegiveisLembrete } from './prediosSheet';
 import {
   listarExtintoresVencendoEm,
   listarExtintoresComInspecaoProxima,

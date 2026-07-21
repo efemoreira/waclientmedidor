@@ -15,6 +15,7 @@ import { PropertyManager, type ConversaNovoImovel } from './PropertyManager';
 import { buscarExtintoresAguardandoConfirmacao, marcarExtintoresConfirmados } from '../utils/extintoresSheet';
 import { registrarLeadAnuncio } from '../utils/leadsAnunciosSheet';
 import { processarAdminFlow } from '../utils/adminFlowHandler';
+import { registrarEventoFunil } from '../utils/funilSheet';
 
 const ADMIN_VENDAS_PHONE = process.env.ADMIN_VENDAS_PHONE || '558586999181'; // Oscar
 const ADMIN_TI_PHONE = process.env.ADMIN_TI_PHONE || '558597223863';         // Felipe
@@ -595,6 +596,7 @@ export class ConversationManager {
               const avancar = async (proximo: Conversation['inscricaoStage'], pergunta: string) => {
                 conversa.inscricaoStage = proximo;
                 await this.persistirConversas();
+                registrarEventoFunil(de, `etapa_${proximo}`);
                 await this.enviarMensagem(de, pergunta);
               };
 
@@ -652,6 +654,7 @@ export class ConversationManager {
                       endereco: lead.endereco || '',
                       qtdExtintores: lead.qtdExtintores || texto,
                     });
+                    registrarEventoFunil(de, 'lead_finalizado', lead.nome || '');
 
                     const msgAdmins = `🔔 *Novo lead de extintor*\n\n👤 ${lead.nome || 'sem nome'}\n📍 ${lead.endereco || 'sem endereço'}\n🧯 Qtd estimada: ${lead.qtdExtintores || texto}\n📱 https://wa.me/${de.replace(/\D/g, '')}`;
                     try {
@@ -677,12 +680,14 @@ export class ConversationManager {
                       };
                       conversa.leadAnuncioData = undefined;
                       await this.persistirConversas();
+                      registrarEventoFunil(de, 'lead_aceitou_monitoramento');
                       // Mostra só a mensagem LGPD (nome já pré-preenchido)
                       await this.enviarMensagem(de, MESSAGES.LGPD_CONSENTIMENTO_MONITORAMENTO);
                     } else {
                       conversa.inscricaoStage = undefined;
                       conversa.leadAnuncioData = undefined;
                       await this.persistirConversas();
+                      registrarEventoFunil(de, 'lead_recusou_monitoramento');
                       await this.enviarMensagem(de, `Tudo certo! Assim que o responsável entrar em contato, você poderá tirar todas as dúvidas. 😊`);
                     }
                     break;
@@ -708,6 +713,7 @@ export class ConversationManager {
               conversa.inscricaoStage = 'lead_nome';
               conversa.leadAnuncioData = {};
               await this.persistirConversas();
+              registrarEventoFunil(de, 'lead_iniciado');
               try {
                 for (const parte of MESSAGES.LEAD_BOAS_VINDAS) {
                   await this.enviarMensagem(de, parte);
@@ -941,6 +947,7 @@ export class ConversationManager {
       conversa.inscricaoStage = undefined;
       conversa.inscricaoData = undefined;
       await this.persistirConversas();
+      registrarEventoFunil(de, 'onboarding_concluido', dados.nome || '');
       const partes = MESSAGES.INSCRICAO_SUCESSO(dados.nome || '', resPredio.idImovel || '');
       for (const parte of partes) {
         await this.enviarMensagem(de, parte);

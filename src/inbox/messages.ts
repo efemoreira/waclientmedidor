@@ -475,17 +475,17 @@ ${casas}`,
 
   // — Frente 3: captação de lead de anúncio —
   LEAD_BOAS_VINDAS: [
-    `👋 Olá! Bem-vindo à *Guardião Extintores* — especialistas em manutenção preventiva e regularização de extintores em Fortaleza.`,
-    `🎯 Oferecemos *inspeção gratuita* dos extintores do seu imóvel ou condomínio, com relatório do que está vencido ou irregular para a vistoria do Corpo de Bombeiros.\n\nSem compromisso.`,
+    `👋 Olá! Bem-vindo à *Guardião Extintores* — especialista em manutenção preventiva e regularização de extintores no Ceará.`,
+    `🎯 Oferecemos *inspeção gratuita* dos extintores do seu prédio, com relatório do que está vencido ou irregular para a vistoria do Corpo de Bombeiros.\n\nSem compromisso.`,
     `📝 Para agendar, preciso de algumas informações rápidas.\n\nPrimeiro, qual é o seu nome?`,
   ],
 
   LEAD_PERGUNTA_ENDERECO: `📍 Qual é o endereço ou o nome do condomínio/empresa?`,
 
-  LEAD_PERGUNTA_QTD_EXTINTORES: `🧯 Quantos extintores aproximadamente você tem no local?\n\n(Pode ser um número aproximado, ex: 5, 20, 50+)`,
+  LEAD_PERGUNTA_QTD_EXTINTORES: `🧯 Quantos extintores aproximadamente você tem no local?`,
 
   LEAD_REGISTRADO: (nome: string) =>
-    `✅ Perfeito, ${nome}! Vou repassar para nosso responsável comercial que entrará em contato para agendar a inspeção gratuita.\n\nQualquer dúvida, é só responder aqui. 😊`,
+    `✅ Perfeito, ${nome}! Vou repassar para nosso responsável comercial que logo entrará em contato.😊`,
 
   LEAD_PERGUNTA_MONITORAMENTO: `\n\nVocê sabia que também oferecemos monitoramento de consumo de água, energia e gás para condomínios e empresas?\n\nDigite *SIM* se quiser se cadastrar no sistema de monitoramento, ou pode aguardar o contato sobre os extintores.`,
 

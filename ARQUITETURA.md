@@ -261,6 +261,26 @@ Um extintor pertence a um cliente (telefone) e um imóvel (nome livre, sem FK fo
 
 Ambas têm deduplicação: não criam novo lead se já existir um com status `novo` para o mesmo `id_cliente`.
 
+### Aba `funil_eventos`
+
+Log de eventos (uma linha por evento, sem deduplicação) para analisar em qual etapa os contatos abandonam a conversa — ex.: comparar quantos iniciaram a captação de lead (`lead_iniciado`) vs. quantos concluíram (`lead_finalizado`).
+
+| Coluna | Campo |
+|---|---|
+| A | data_hora |
+| B | telefone |
+| C | etapa |
+| D | detalhe (opcional) |
+
+Etapas registradas por `registrarEventoFunil()` (`src/utils/funilSheet.ts`), chamado a partir de `ConversationManager.ts`:
+- `lead_iniciado` — número desconhecido começou a captação de lead
+- `etapa_<nome>` — avançou para uma etapa do onboarding ou da captação de lead (ex.: `etapa_lead_endereco`, `etapa_bairro`)
+- `lead_finalizado` — captação de lead concluída (mesmo momento em que a linha é gravada em `leads_anuncios`)
+- `lead_aceitou_monitoramento` / `lead_recusou_monitoramento` — resposta ao convite de virar cliente de monitoramento após o lead
+- `onboarding_concluido` — onboarding normal (não-lead) finalizado com sucesso
+
+Nunca lança erro — falha de gravação só gera um `logger.warn`, para não travar o fluxo do bot.
+
 ---
 
 ## Configuração (`src/config.ts`)
@@ -492,6 +512,7 @@ Copie `.env.example` para `.env.local` e preencha os valores:
 | `GOOGLE_EXTINTORES_SHEET_NAME` | ❌ | Nome da aba de extintores (padrão: `extintores`) |
 | `GOOGLE_LEADS_AGUA_SHEET_NAME` | ❌ | Nome da aba de leads de água (padrão: `leads_agua`) |
 | `GOOGLE_LEADS_ANUNCIOS_SHEET_NAME` | ❌ | Nome da aba de leads de anúncio (padrão: `leads_anuncios`) |
+| `GOOGLE_FUNIL_SHEET_NAME` | ❌ | Nome da aba de eventos de funil (padrão: `funil_eventos`) |
 | `ADMIN_VENDAS_PHONE` | ❌ | Telefone do admin de vendas — Oscar (padrão: `558586999181`) |
 | `ADMIN_TI_PHONE` | ❌ | Telefone do admin técnico — Felipe (padrão: `558597223863`) |
 | `CRON_SECRET` | ✅* | Token do cron diário e do endpoint de resumo semanal (gerado pela Vercel) |

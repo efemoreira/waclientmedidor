@@ -3,9 +3,9 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { EnvioMassa } from '../../src/bulk/envio-massa';
-import { config } from '../../src/config';
-import { lerStatus, salvarStatus, lerFila, salvarFila, deveParar } from '../../src/utils/bulk-file-operations';
+import { EnvioMassa } from '../envio-massa';
+import { config } from '../../config';
+import { lerStatus, salvarStatus, lerFila, salvarFila, deveParar } from '../../utils/bulk-file-operations';
 
 export async function handleProcess(req: VercelRequest, res: VercelResponse): Promise<void> {
   const status = await lerStatus();

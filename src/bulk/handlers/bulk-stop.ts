@@ -3,7 +3,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { lerStatus, salvarStatus, salvarStop } from '../../src/utils/bulk-file-operations';
+import { lerStatus, salvarStatus, salvarStop } from '../../utils/bulk-file-operations';
 
 export async function handleStop(req: VercelRequest, res: VercelResponse): Promise<void> {
   console.log('  🛑 Solicitando parada do envio');

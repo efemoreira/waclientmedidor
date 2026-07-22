@@ -30,12 +30,9 @@ Vercel (serverless functions)
 ├── api/health.ts             → Healthcheck (WhatsApp, Google Sheets, Upstash)
 ├── api/cron-vencimentos.ts   → Job diário (10h BRT): lembretes de extintor/inspeção + resumo semanal às segundas
 ├── api/cron-resumo-semanal.ts → Endpoint standalone do resumo semanal (debug/chamada manual)
+├── api/media.ts              → Proxy de mídia recebida (áudio/imagem) para o painel
 ├── api/bulk.ts              → Orquestrador de envio em massa
-│   ├── handlers/bulk-upload.ts   → Faz upload e valida CSV
-│   ├── handlers/bulk-start.ts    → Inicializa a fila de envio
-│   ├── handlers/bulk-process.ts  → Processa um lote de envio
-│   ├── handlers/bulk-stop.ts     → Interrompe o envio
-│   └── handlers/bulk-status.ts   → Consulta status do envio
+│   (delega para src/bulk/handlers/ — ver abaixo)
 │
 src/
 ├── config.ts               → Configuração centralizada (variáveis de ambiente)
@@ -59,7 +56,13 @@ src/
 │   └── messages.ts             → Textos centralizados de todas as mensagens do bot
 │
 ├── bulk/
-│   └── envio-massa.ts      → Engine de envio em massa com rate limiting
+│   ├── envio-massa.ts      → Engine de envio em massa com rate limiting
+│   └── handlers/           → Handlers de `api/bulk.ts` (não são functions próprias — ver nota abaixo)
+│       ├── bulk-upload.ts
+│       ├── bulk-start.ts
+│       ├── bulk-process.ts
+│       ├── bulk-stop.ts
+│       └── bulk-status.ts
 │
 └── utils/
     ├── logger.ts               → Logger estruturado com níveis (info/warn/error/debug)
@@ -138,24 +141,26 @@ api/webhook.ts
 
 O envio em massa é dividido em etapas para respeitar o limite de 10 segundos de execução das Vercel Functions:
 
+> **Nota:** os handlers ficam em `src/bulk/handlers/`, fora de `api/`. A Vercel trata *todo* arquivo dentro de `api/` (recursivamente) como uma Serverless Function própria, mesmo sem export default — no plano Hobby o limite é 12 functions por deployment, e os 5 arquivos de handler nunca foram endpoints diretos (só são chamados internamente por `api/bulk.ts` via `action`). Mantê-los fora de `api/` evita gastar esse limite à toa.
+
 ```
 Frontend (public/)
        │
        │  POST /api/bulk  { action: 'upload', csv: '...' }
        ▼
-handlers/bulk-upload.ts
+api/bulk.ts → src/bulk/handlers/bulk-upload.ts
   ├─ parseCsv()             → Parse do CSV (detecta delimitador, header, coluna de número)
   └─ validarNumerosWhatsApp() → Valida se os números existem no WhatsApp
 
        │  POST /api/bulk  { action: 'start', template, contatos }
        ▼
-handlers/bulk-start.ts
+api/bulk.ts → src/bulk/handlers/bulk-start.ts
   ├─ Salva lista de contatos em /tmp/bulk-queue.json
   └─ Salva status inicial em /tmp/bulk-status.json
 
        │  POST /api/bulk  { action: 'process' }  ← chamado repetidamente pelo frontend
        ▼
-handlers/bulk-process.ts
+api/bulk.ts → src/bulk/handlers/bulk-process.ts
   ├─ Lê /tmp/bulk-status.json e /tmp/bulk-queue.json
   ├─ Verifica /tmp/bulk-stop.json (flag de interrupção)
   ├─ Processa próximo lote (batchSize = 10 por padrão)
@@ -165,12 +170,12 @@ handlers/bulk-process.ts
 
        │  POST /api/bulk  { action: 'stop' }
        ▼
-handlers/bulk-stop.ts
+api/bulk.ts → src/bulk/handlers/bulk-stop.ts
   └─ Salva flag stop=true em /tmp/bulk-stop.json
 
        │  GET /api/bulk
        ▼
-handlers/bulk-status.ts
+api/bulk.ts → src/bulk/handlers/bulk-status.ts
   └─ Lê /tmp/bulk-status.json e retorna o status atual
 ```
 

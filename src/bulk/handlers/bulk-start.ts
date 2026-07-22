@@ -3,10 +3,10 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { config } from '../../src/config';
-import { parseCsv } from '../../src/utils/csv-parser';
-import { normalizarNumero } from '../../src/utils/phone-normalizer';
-import { lerStatus, salvarStatus, salvarFila, salvarStop, type BulkStatus } from '../../src/utils/bulk-file-operations';
+import { config } from '../../config';
+import { parseCsv } from '../../utils/csv-parser';
+import { normalizarNumero } from '../../utils/phone-normalizer';
+import { lerStatus, salvarStatus, salvarFila, salvarStop, type BulkStatus } from '../../utils/bulk-file-operations';
 
 export async function handleStart(req: VercelRequest, res: VercelResponse): Promise<void> {
   console.log('  🚀 Iniciando envio em massa');

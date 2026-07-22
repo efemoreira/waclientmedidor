@@ -3,9 +3,9 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { parseCsv } from '../../src/utils/csv-parser';
-import { normalizarNumero } from '../../src/utils/phone-normalizer';
-import { validarNumerosWhatsApp } from '../../src/utils/whatsapp-validator';
+import { parseCsv } from '../../utils/csv-parser';
+import { normalizarNumero } from '../../utils/phone-normalizer';
+import { validarNumerosWhatsApp } from '../../utils/whatsapp-validator';
 
 export async function handleUpload(req: VercelRequest, res: VercelResponse): Promise<void> {
   console.log('  📁 Upload de CSV');

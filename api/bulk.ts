@@ -1,10 +1,10 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { validateConfig } from '../src/config';
-import { handleUpload } from './handlers/bulk-upload';
-import { handleStart } from './handlers/bulk-start';
-import { handleProcess } from './handlers/bulk-process';
-import { handleStop } from './handlers/bulk-stop';
-import { handleGetStatus } from './handlers/bulk-status';
+import { handleUpload } from '../src/bulk/handlers/bulk-upload';
+import { handleStart } from '../src/bulk/handlers/bulk-start';
+import { handleProcess } from '../src/bulk/handlers/bulk-process';
+import { handleStop } from '../src/bulk/handlers/bulk-stop';
+import { handleGetStatus } from '../src/bulk/handlers/bulk-status';
 
 if (!validateConfig()) {
   console.error('❌ Configuração inválida');

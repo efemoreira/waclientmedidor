@@ -3,7 +3,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node';
-import { lerStatus } from '../../src/utils/bulk-file-operations';
+import { lerStatus } from '../../utils/bulk-file-operations';
 
 export async function handleGetStatus(req: VercelRequest, res: VercelResponse): Promise<void> {
   console.log('\n' + '='.repeat(50));

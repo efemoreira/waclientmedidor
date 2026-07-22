@@ -130,7 +130,7 @@ api/webhook.ts
         └─ 7. Comando não reconhecido → COMANDO_NAO_RECONHECIDO
 ```
 
-> **Extensão Guardião:** antes do fluxo acima, `processarWebhook` verifica primeiro `isHuman` (bot silencioso se operador assumiu o controle) e, para números admin (`ADMIN_VENDAS_PHONE`/`ADMIN_TI_PHONE`), trata `adminStage` via `adminFlowHandler.processarAdminFlow()` ou delega ao `CommandHandler` (que pode iniciar um `adminStage`). Números desconhecidos que não são clientes passam primeiro pelo fluxo de captação de lead (`inscricaoStage = 'lead_nome' | 'lead_endereco' | 'lead_qtd_extintores'`) antes do onboarding normal. Ver seção "Módulo Guardião Extintores" abaixo.
+> **Extensão Guardião:** antes do fluxo acima, `processarWebhook` verifica primeiro `isHuman` (bot silencioso se operador assumiu o controle), depois se a mensagem é de áudio (`msg.type === 'audio'`) — nesse caso responde com `MESSAGES.AUDIO_NAO_SUPORTADO`, notifica `ADMIN_VENDAS_PHONE`/`ADMIN_TI_PHONE` e não avança o estágio da conversa — e, para números admin (`ADMIN_VENDAS_PHONE`/`ADMIN_TI_PHONE`), trata `adminStage` via `adminFlowHandler.processarAdminFlow()` ou delega ao `CommandHandler` (que pode iniciar um `adminStage`). Números desconhecidos que não são clientes passam primeiro pelo fluxo de captação de lead (`inscricaoStage = 'lead_nome' | 'lead_endereco' | 'lead_qtd_extintores'`) antes do onboarding normal. Ver seção "Módulo Guardião Extintores" abaixo.
 
 ---
 
@@ -535,6 +535,7 @@ Copie `.env.example` para `.env.local` e preencha os valores:
 | `POST` | `/api/conversations` | Cria nova conversa ou alterna controle manual |
 | `DELETE` | `/api/conversations` | Apaga todas as conversas |
 | `POST` | `/api/messages` | Envia uma mensagem pontual |
+| `GET` | `/api/media?id=xxx` | Proxy de mídia recebida do WhatsApp (ex.: áudio) para reprodução no painel |
 | `GET` | `/api/bulk` | Status do envio em massa |
 | `POST` | `/api/bulk` | Ações: `upload`, `start`, `process`, `stop` |
 | `GET` | `/api/health` | Healthcheck (WhatsApp, Google Sheets, Upstash) |
@@ -545,7 +546,7 @@ Copie `.env.example` para `.env.local` e preencha os valores:
 
 ## Segurança
 
-- O header `x-app-password` é verificado nos endpoints `/api/conversations` e `/api/messages` quando a variável `APP_PASSWORD` está configurada.
+- O header `x-app-password` é verificado nos endpoints `/api/conversations`, `/api/messages` e `/api/media` quando a variável `APP_PASSWORD` está configurada.
 - O webhook verifica o `hub.verify_token` na validação inicial e sempre retorna HTTP 200 nas requisições POST (para evitar reenvios pela Meta).
 - Nenhum segredo é hardcoded no código — todos os valores sensíveis são lidos de variáveis de ambiente.
 

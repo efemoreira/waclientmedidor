@@ -317,6 +317,31 @@ function renderConversationList() {
   });
 }
 
+const audioUrlCache = new Map();
+
+async function tocarAudioMensagem(mediaId, container) {
+  container.innerHTML = '⏳ Carregando áudio...';
+  try {
+    let url = audioUrlCache.get(mediaId);
+    if (!url) {
+      const res = await authFetch(`/api/media?id=${encodeURIComponent(mediaId)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      url = URL.createObjectURL(blob);
+      audioUrlCache.set(mediaId, url);
+    }
+    container.innerHTML = '';
+    const audio = document.createElement('audio');
+    audio.controls = true;
+    audio.autoplay = true;
+    audio.src = url;
+    container.appendChild(audio);
+  } catch (err) {
+    container.innerHTML = '⚠️ Não foi possível carregar o áudio';
+    console.error('Erro ao carregar áudio:', err);
+  }
+}
+
 function renderConversation(conv) {
   chatHeader.querySelector('h2').textContent = conv.name || conv.phoneNumber;
   chatHeader.querySelector('.subtitle').textContent = conv.phoneNumber;
@@ -330,10 +355,27 @@ function renderConversation(conv) {
   msgs.forEach((m) => {
     const el = document.createElement('div');
     el.className = `message ${m.direction}`;
-    el.innerHTML = `
-      <div>${m.text}</div>
-      <span class="meta">${formatTime(m.timestamp)}</span>
-    `;
+
+    if (m.mediaType === 'audio' && m.mediaId) {
+      const bodyEl = document.createElement('div');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'audio-msg-btn';
+      btn.textContent = '▶ Ouvir áudio';
+      btn.addEventListener('click', () => tocarAudioMensagem(m.mediaId, bodyEl));
+      bodyEl.appendChild(btn);
+      el.appendChild(bodyEl);
+    } else {
+      const bodyEl = document.createElement('div');
+      bodyEl.textContent = m.text;
+      el.appendChild(bodyEl);
+    }
+
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = formatTime(m.timestamp);
+    el.appendChild(meta);
+
     messagesEl.appendChild(el);
   });
 

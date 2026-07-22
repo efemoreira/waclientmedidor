@@ -34,6 +34,8 @@ export interface MessageRecord {
   text: string;
   timestamp: number;
   status?: string;
+  mediaId?: string;
+  mediaType?: string;
 }
 
 /**
@@ -323,7 +325,8 @@ export class ConversationManager {
     direcao: 'in' | 'out',
     texto: string,
     mensagemId?: string,
-    timestamp?: number
+    timestamp?: number,
+    media?: { mediaId?: string; mediaType?: string }
   ): Promise<void> {
     await this.garantirResetAtualizado();
     const conversa = this.obterOuCriarConversa(waId);
@@ -333,6 +336,8 @@ export class ConversationManager {
       direction: direcao,
       text: texto,
       timestamp: ts,
+      mediaId: media?.mediaId,
+      mediaType: media?.mediaType,
     };
 
     conversa.messages.push(registro);
@@ -488,7 +493,10 @@ export class ConversationManager {
               this.obterOuCriarConversa(de, nome);
             }
 
-            await this.adicionarMensagem(de, 'in', texto, msg.id, timestamp);
+            await this.adicionarMensagem(de, 'in', texto, msg.id, timestamp, {
+              mediaId: msg.audio?.id,
+              mediaType: msg.type,
+            });
             this.log(`✅ De ${de}: "${texto.substring(0, 50)}..."`);
 
             // Obter conversa - pode ser reatribuída durante o processamento
@@ -496,6 +504,19 @@ export class ConversationManager {
 
             // Bot silencioso quando operador humano assumiu a conversa
             if (conversa.isHuman) continue;
+
+            // ── Áudio: bot não entende, avisa o cliente e notifica os admins ──
+            if (msg.type === 'audio' && !ADMIN_PHONES.has(de.replace(/\D/g, ''))) {
+              await this.enviarMensagem(de, MESSAGES.AUDIO_NAO_SUPORTADO);
+              const msgAdmins = `🎤 *Áudio recebido de ${conversa.name || de}*\n\nO bot não consegue entender mensagens de áudio. Responda diretamente:\nhttps://wa.me/${de.replace(/\D/g, '')}`;
+              try {
+                await this.enviarMensagem(ADMIN_VENDAS_PHONE, msgAdmins);
+                await this.enviarMensagem(ADMIN_TI_PHONE, msgAdmins);
+              } catch (e: any) {
+                this.log(`❌ Erro ao notificar admins sobre áudio: ${e?.message || e}`);
+              }
+              continue;
+            }
 
             // ── Bypass admin: admins pulam verificação de inscrição e processam direto ──
             if (ADMIN_PHONES.has(de.replace(/\D/g, ''))) {
@@ -872,6 +893,15 @@ export class ConversationManager {
     }
 
     this.log('✅ WEBHOOK PROCESSADO');
+  }
+
+  /**
+   * Baixar o conteúdo binário de uma mídia recebida (ex.: áudio) para reprodução no painel
+   */
+  async obterMedia(mediaId: string): Promise<{ buffer: Buffer; mimeType: string }> {
+    const meta = await this.client.getMediaUrl(mediaId);
+    const buffer = await this.client.downloadMediaData(mediaId);
+    return { buffer, mimeType: meta?.mime_type || 'audio/ogg' };
   }
 
   /**

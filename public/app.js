@@ -399,6 +399,16 @@ function renderConversation(conv) {
       btn.addEventListener('click', () => mostrarImagemMensagem(m.mediaId, bodyEl));
       bodyEl.appendChild(btn);
       el.appendChild(bodyEl);
+    } else if (m.text === '[audio]') {
+      const bodyEl = document.createElement('div');
+      bodyEl.className = 'media-expired';
+      bodyEl.innerHTML = '🎤 Áudio <span class="expired-tag">expirado</span><br/><small>O acesso expirou após 24h. Peça ao contato para reenviar.</small>';
+      el.appendChild(bodyEl);
+    } else if (m.text === '[image]') {
+      const bodyEl = document.createElement('div');
+      bodyEl.className = 'media-expired';
+      bodyEl.innerHTML = '📷 Imagem <span class="expired-tag">expirada</span><br/><small>O acesso expirou após 24h. Peça ao contato para reenviar.</small>';
+      el.appendChild(bodyEl);
     } else {
       const bodyEl = document.createElement('div');
       bodyEl.textContent = m.text;

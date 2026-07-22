@@ -470,7 +470,8 @@ ${casas}`,
 
   EXTINTOR_SEM_PENDENTE: `Não encontrei nenhum extintor aguardando confirmação de agendamento no seu cadastro.\n\nSe precisar de mais alguma coisa, é só falar.`,
 
-  AUDIO_NAO_SUPORTADO: `🎤 No momento não consigo entender mensagens de áudio.\n\nJá avisei um dos nossos responsáveis e ele vai entrar em contato com você. Se preferir, pode escrever sua mensagem em texto que eu já te ajudo por aqui. 😊`,
+  MIDIA_NAO_SUPORTADA: (tipo: 'audio' | 'image') =>
+    `${tipo === 'audio' ? '🎤' : '📷'} No momento não consigo entender ${tipo === 'audio' ? 'mensagens de áudio' : 'imagens'}.\n\nJá avisei um dos nossos responsáveis e ele vai entrar em contato com você. Se preferir, pode escrever sua mensagem em texto que eu já te ajudo por aqui. 😊`,
 
   // — Frente 2: alerta de consumo anormal de água —
   AGUA_LEAD_MENSAGEM_CLIENTE: `🔧 Na leitura de hoje o consumo veio acima do normal — costuma ser sinal de vazamento. Posso mandar um técnico localizar antes de virar conta alta. Quer que eu agende?\n\nResponda *SIM* que eu marco.`,

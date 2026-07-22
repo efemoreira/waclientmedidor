@@ -494,7 +494,7 @@ export class ConversationManager {
             }
 
             await this.adicionarMensagem(de, 'in', texto, msg.id, timestamp, {
-              mediaId: msg.audio?.id,
+              mediaId: msg.audio?.id || msg.image?.id,
               mediaType: msg.type,
             });
             this.log(`✅ De ${de}: "${texto.substring(0, 50)}..."`);
@@ -505,15 +505,17 @@ export class ConversationManager {
             // Bot silencioso quando operador humano assumiu a conversa
             if (conversa.isHuman) continue;
 
-            // ── Áudio: bot não entende, avisa o cliente e notifica os admins ──
-            if (msg.type === 'audio' && !ADMIN_PHONES.has(de.replace(/\D/g, ''))) {
-              await this.enviarMensagem(de, MESSAGES.AUDIO_NAO_SUPORTADO);
-              const msgAdmins = `🎤 *Áudio recebido de ${conversa.name || de}*\n\nO bot não consegue entender mensagens de áudio. Responda diretamente:\nhttps://wa.me/${de.replace(/\D/g, '')}`;
+            // ── Áudio/imagem: bot não entende, avisa o cliente e notifica os admins ──
+            if ((msg.type === 'audio' || msg.type === 'image') && !ADMIN_PHONES.has(de.replace(/\D/g, ''))) {
+              await this.enviarMensagem(de, MESSAGES.MIDIA_NAO_SUPORTADA(msg.type));
+              const emoji = msg.type === 'audio' ? '🎤' : '📷';
+              const rotulo = msg.type === 'audio' ? 'Áudio' : 'Imagem';
+              const msgAdmins = `${emoji} *${rotulo} recebido(a) de ${conversa.name || de}*\n\nO bot não consegue entender ${msg.type === 'audio' ? 'áudios' : 'imagens'}. Responda diretamente:\nhttps://wa.me/${de.replace(/\D/g, '')}`;
               try {
                 await this.enviarMensagem(ADMIN_VENDAS_PHONE, msgAdmins);
                 await this.enviarMensagem(ADMIN_TI_PHONE, msgAdmins);
               } catch (e: any) {
-                this.log(`❌ Erro ao notificar admins sobre áudio: ${e?.message || e}`);
+                this.log(`❌ Erro ao notificar admins sobre ${msg.type}: ${e?.message || e}`);
               }
               continue;
             }

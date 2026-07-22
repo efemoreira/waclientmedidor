@@ -317,19 +317,24 @@ function renderConversationList() {
   });
 }
 
-const audioUrlCache = new Map();
+const mediaUrlCache = new Map();
+
+async function obterUrlMedia(mediaId) {
+  let url = mediaUrlCache.get(mediaId);
+  if (!url) {
+    const res = await authFetch(`/api/media?id=${encodeURIComponent(mediaId)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    url = URL.createObjectURL(blob);
+    mediaUrlCache.set(mediaId, url);
+  }
+  return url;
+}
 
 async function tocarAudioMensagem(mediaId, container) {
   container.innerHTML = '⏳ Carregando áudio...';
   try {
-    let url = audioUrlCache.get(mediaId);
-    if (!url) {
-      const res = await authFetch(`/api/media?id=${encodeURIComponent(mediaId)}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      url = URL.createObjectURL(blob);
-      audioUrlCache.set(mediaId, url);
-    }
+    const url = await obterUrlMedia(mediaId);
     container.innerHTML = '';
     const audio = document.createElement('audio');
     audio.controls = true;
@@ -339,6 +344,26 @@ async function tocarAudioMensagem(mediaId, container) {
   } catch (err) {
     container.innerHTML = '⚠️ Não foi possível carregar o áudio';
     console.error('Erro ao carregar áudio:', err);
+  }
+}
+
+async function mostrarImagemMensagem(mediaId, container) {
+  container.innerHTML = '⏳ Carregando imagem...';
+  try {
+    const url = await obterUrlMedia(mediaId);
+    container.innerHTML = '';
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    const img = document.createElement('img');
+    img.src = url;
+    img.className = 'chat-image';
+    link.appendChild(img);
+    container.appendChild(link);
+  } catch (err) {
+    container.innerHTML = '⚠️ Não foi possível carregar a imagem';
+    console.error('Erro ao carregar imagem:', err);
   }
 }
 
@@ -363,6 +388,15 @@ function renderConversation(conv) {
       btn.className = 'audio-msg-btn';
       btn.textContent = '▶ Ouvir áudio';
       btn.addEventListener('click', () => tocarAudioMensagem(m.mediaId, bodyEl));
+      bodyEl.appendChild(btn);
+      el.appendChild(bodyEl);
+    } else if (m.mediaType === 'image' && m.mediaId) {
+      const bodyEl = document.createElement('div');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'audio-msg-btn';
+      btn.textContent = '🖼 Ver imagem';
+      btn.addEventListener('click', () => mostrarImagemMensagem(m.mediaId, bodyEl));
       bodyEl.appendChild(btn);
       el.appendChild(bodyEl);
     } else {

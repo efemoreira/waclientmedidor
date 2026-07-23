@@ -13,7 +13,7 @@ import { MESSAGES } from './messages';
 import { CommandHandler } from './CommandHandler';
 import { PropertyManager, type ConversaNovoImovel } from './PropertyManager';
 import { buscarExtintoresAguardandoConfirmacao, marcarExtintoresConfirmados } from '../utils/extintoresSheet';
-import { registrarLeadAnuncio } from '../utils/leadsAnunciosSheet';
+import { registrarLeadParcial, atualizarDadosLeadAnuncio } from '../utils/leadsAnunciosSheet';
 import { processarAdminFlow } from '../utils/adminFlowHandler';
 import { registrarEventoFunil } from '../utils/funilSheet';
 
@@ -505,9 +505,8 @@ export class ConversationManager {
             // Bot silencioso quando operador humano assumiu a conversa
             if (conversa.isHuman) continue;
 
-            // ── Áudio/imagem: bot não entende, avisa o cliente e notifica os admins ──
+            // ── Áudio/imagem: bot não entende texto de mídia; notifica os admins ──
             if ((msg.type === 'audio' || msg.type === 'image') && !ADMIN_PHONES.has(de.replace(/\D/g, ''))) {
-              await this.enviarMensagem(de, MESSAGES.MIDIA_NAO_SUPORTADA(msg.type));
               const emoji = msg.type === 'audio' ? '🎤' : '📷';
               const rotulo = msg.type === 'audio' ? 'Áudio' : 'Imagem';
               const msgAdmins = `${emoji} *${rotulo} recebido(a) de ${conversa.name || de}*\n\nO bot não consegue entender ${msg.type === 'audio' ? 'áudios' : 'imagens'}. Responda diretamente:\nhttps://wa.me/${de.replace(/\D/g, '')}`;
@@ -516,6 +515,18 @@ export class ConversationManager {
                 await this.enviarMensagem(ADMIN_TI_PHONE, msgAdmins);
               } catch (e: any) {
                 this.log(`❌ Erro ao notificar admins sobre ${msg.type}: ${e?.message || e}`);
+              }
+
+              // Contato novo que abriu a conversa com áudio/foto (muito comum no WhatsApp):
+              // iniciar a captação de lead em vez de só recusar, para não perder o contato.
+              const contatoNovo =
+                !conversa.inscricaoStage &&
+                !conversa.novoImovel &&
+                !(await verificarClientePredios(de)).inscrito;
+              if (contatoNovo) {
+                await this._iniciarCaptacaoLead(de, conversa);
+              } else {
+                await this.enviarMensagem(de, MESSAGES.MIDIA_NAO_SUPORTADA(msg.type));
               }
               continue;
             }
@@ -671,11 +682,13 @@ export class ConversationManager {
                     conversa.inscricaoStage = 'lead_pos_registro';
                     await this.persistirConversas();
 
-                    await registrarLeadAnuncio({
-                      idCliente: de,
+                    // Evolui a linha 'parcial' criada no primeiro contato para 'novo'
+                    // (fallback interno cria linha completa se nenhuma parcial existir)
+                    await atualizarDadosLeadAnuncio(de, {
                       nome: lead.nome || '',
                       endereco: lead.endereco || '',
                       qtdExtintores: lead.qtdExtintores || texto,
+                      status: 'novo',
                     });
                     registrarEventoFunil(de, 'lead_finalizado', lead.nome || '');
 
@@ -733,17 +746,7 @@ export class ConversationManager {
 
             if (!verificacao.inscrito) {
               // Número desconhecido → capturar lead de extintor antes do onboarding
-              conversa.inscricaoStage = 'lead_nome';
-              conversa.leadAnuncioData = {};
-              await this.persistirConversas();
-              registrarEventoFunil(de, 'lead_iniciado');
-              try {
-                for (const parte of MESSAGES.LEAD_BOAS_VINDAS) {
-                  await this.enviarMensagem(de, parte);
-                }
-              } catch (erro: any) {
-                this.log(`❌ Falha ao enviar boas-vindas de lead: ${erro?.message || erro}`);
-              }
+              await this._iniciarCaptacaoLead(de, conversa);
               continue;
             }
 
@@ -986,6 +989,38 @@ export class ConversationManager {
       }
     } else {
       await this.enviarMensagem(de, MESSAGES.INSCRICAO_ERRO(resCliente.erro || resPredio.erro));
+    }
+  }
+
+  /**
+   * Inicia a captação de lead de anúncio para um número desconhecido: marca o estágio,
+   * grava o número na planilha JÁ AGORA (lead 'parcial', para o comercial não perder
+   * quem abandonar antes de responder tudo), notifica os admins e envia as boas-vindas.
+   */
+  private async _iniciarCaptacaoLead(de: string, conversa: Conversation): Promise<void> {
+    conversa.inscricaoStage = 'lead_nome';
+    conversa.leadAnuncioData = {};
+    await this.persistirConversas();
+    registrarEventoFunil(de, 'lead_iniciado');
+
+    // Boas-vindas primeiro (o cliente vê a resposta rápido)
+    try {
+      for (const parte of MESSAGES.LEAD_BOAS_VINDAS) {
+        await this.enviarMensagem(de, parte);
+      }
+    } catch (erro: any) {
+      this.log(`❌ Falha ao enviar boas-vindas de lead: ${erro?.message || erro}`);
+    }
+
+    // Grava o número na planilha e avisa o comercial mesmo que a pessoa não termine
+    await registrarLeadParcial(de);
+    const numero = de.replace(/\D/g, '');
+    const msgAdmins = `🆕 *Novo contato do anúncio*\n\nEntrou em contato e está respondendo as perguntas.\n📱 https://wa.me/${numero}`;
+    try {
+      await this.enviarMensagem(ADMIN_VENDAS_PHONE, msgAdmins);
+      await this.enviarMensagem(ADMIN_TI_PHONE, msgAdmins);
+    } catch (e: any) {
+      this.log(`❌ Erro ao notificar admins sobre novo contato: ${e?.message || e}`);
     }
   }
 

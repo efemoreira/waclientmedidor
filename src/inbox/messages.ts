@@ -478,14 +478,13 @@ ${casas}`,
 
   // — Frente 3: captação de lead de anúncio —
   LEAD_BOAS_VINDAS: [
-    `👋 Olá! Bem-vindo à *Guardião Extintores* — especialista em manutenção preventiva e regularização de extintores no Ceará.`,
-    `🎯 Oferecemos *inspeção gratuita* dos extintores do seu prédio, com relatório do que está vencido ou irregular para a vistoria do Corpo de Bombeiros.\n\nSem compromisso.`,
-    `📝 Para agendar, preciso de algumas informações rápidas.\n\nPrimeiro, qual é o seu nome?`,
+    `👋 Olá! Aqui é da *Guardião Extintores*. Fazemos *inspeção gratuita* dos seus extintores, com relatório do que está vencido ou irregular para a vistoria do Bombeiro — sem compromisso.`,
+    `😊 Para começar, como é o seu nome?`,
   ],
 
-  LEAD_PERGUNTA_ENDERECO: `📍 Qual é o endereço ou o nome do condomínio/empresa?`,
+  LEAD_PERGUNTA_ENDERECO: `📍 Onde fica? Pode ser o endereço ou só o nome do condomínio/empresa.`,
 
-  LEAD_PERGUNTA_QTD_EXTINTORES: `🧯 Quantos extintores aproximadamente você tem no local?`,
+  LEAD_PERGUNTA_QTD_EXTINTORES: `🧯 Por último: quantos extintores tem no local, mais ou menos? Se não souber, escreve *não sei* que a gente resolve na visita.`,
 
   LEAD_REGISTRADO: (nome: string) =>
     `✅ Perfeito, ${nome}! Vou repassar para nosso responsável comercial que logo entrará em contato.😊`,

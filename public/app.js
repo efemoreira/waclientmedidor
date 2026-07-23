@@ -374,6 +374,9 @@ function renderConversation(conv) {
   messageInput.disabled = false;
   messageForm.querySelector('button').disabled = false;
 
+  // Detecta se o usuário estava vendo o final da conversa (com 100px de tolerância)
+  const wasAtBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
+
   messagesEl.innerHTML = '';
   const msgs = Array.isArray(conv.messages) ? conv.messages : [];
   logger.add(`💬 Renderizando conversa (${msgs.length} mensagens)`);
@@ -423,7 +426,10 @@ function renderConversation(conv) {
     messagesEl.appendChild(el);
   });
 
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  // Auto-scroll inteligente: só volta para baixo se estava já vendo o final
+  if (wasAtBottom) {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
 }
 
 
